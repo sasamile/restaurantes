@@ -1,0 +1,156 @@
+import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
+
+const roleValidator = v.union(
+  v.literal("OWNER"),
+  v.literal("ADMIN"),
+  v.literal("AGENT"),
+  v.literal("VIEWER")
+);
+
+/** Lista todos los usuarios (superadmin) - sin passwordHash */
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").order("desc").collect();
+    return users.map((u) => {
+      const { passwordHash: _, ...safe } = u;
+      return safe;
+    });
+  },
+});
+
+export const get = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) return null;
+    const { passwordHash: _, ...safe } = user;
+    return safe;
+  },
+});
+
+/** Crear usuario para invitarlo como administrador de un restaurante */
+export const create = mutation({
+  args: {
+    name: v.string(),
+    email: v.string(),
+    password: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .first();
+    if (existing) throw new Error("Ya existe un usuario con ese email");
+
+    const now = Date.now();
+    let passwordHash: string | undefined;
+    if (args.password) {
+      const salt = new Uint8Array(16);
+      if (typeof crypto !== "undefined" && crypto.getRandomValues)
+        crypto.getRandomValues(salt);
+      const enc = new TextEncoder();
+      const key = await crypto.subtle.importKey(
+        "raw",
+        enc.encode(args.password),
+        "PBKDF2",
+        false,
+        ["deriveBits"]
+      );
+      const bits = await crypto.subtle.deriveBits(
+        { name: "PBKDF2", hash: "SHA-256", salt, iterations: 100_000 },
+        key,
+        256
+      );
+      const hashHex = Array.from(new Uint8Array(bits))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      const saltHex = Array.from(salt)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      passwordHash = `${saltHex}:${hashHex}`;
+    }
+    return await ctx.db.insert("users", {
+      name: args.name,
+      email: args.email,
+      passwordHash,
+      isSuperadmin: false,
+      createdAt: now,
+    });
+  },
+});
+
+export const listByTenant = query({
+  args: { tenantId: v.id("tenants") },
+  handler: async (ctx, args) => {
+    const memberships = await ctx.db
+      .query("userTenants")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
+      .collect();
+    const result = await Promise.all(
+      memberships.map(async (ut) => {
+        const user = await ctx.db.get(ut.userId);
+        return { ...ut, user: user ?? null };
+      })
+    );
+    return result;
+  },
+});
+
+export const inviteToTenant = mutation({
+  args: {
+    tenantId: v.id("tenants"),
+    userId: v.id("users"),
+    role: roleValidator,
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("userTenants")
+      .withIndex("by_user_tenant", (q) =>
+        q.eq("userId", args.userId).eq("tenantId", args.tenantId)
+      )
+      .first();
+    if (existing) throw new Error("El usuario ya tiene acceso a este restaurante");
+    const now = Date.now();
+    return await ctx.db.insert("userTenants", {
+      userId: args.userId,
+      tenantId: args.tenantId,
+      role: args.role,
+      createdAt: now,
+    });
+  },
+});
+
+export const updateRole = mutation({
+  args: {
+    userTenantId: v.id("userTenants"),
+    role: roleValidator,
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.userTenantId, { role: args.role });
+    return args.userTenantId;
+  },
+});
+
+export const removeFromTenant = mutation({
+  args: { userTenantId: v.id("userTenants") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.userTenantId);
+    return args.userTenantId;
+  },
+});
+
+export const getTenantsForUser = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const memberships = await ctx.db
+      .query("userTenants")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+    const tenants = await Promise.all(
+      memberships.map((ut) => ctx.db.get(ut.tenantId))
+    );
+    return memberships.map((ut, i) => ({ ...ut, tenant: tenants[i] ?? null }));
+  },
+});
