@@ -1,33 +1,83 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { useState } from "react";
+import { z } from "zod";
+import { useForm } from "react-hook-form";
 import { useMutation } from "convex/react";
+import { sileo } from "sileo";
+import { Eye, EyeOff } from "lucide-react";
 import { api } from "@/convex";
 import { useAuth } from "@/lib/auth-context";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import Image from "next/image";
+
+const loginSchema = z.object({
+  email: z.string().email({ message: "Ingresa un correo válido" }),
+  password: z
+    .string()
+    .min(6, { message: "La contraseña debe tener al menos 6 caracteres" }),
+});
+
+type LoginValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
   const authLogin = useMutation(api.auth.login);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const form = useForm<LoginValues>({
+    defaultValues: {
+      email: "",
+      password: "",
+    },
+  });
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setIsSubmitting(true);
+  const {
+    handleSubmit,
+    formState: { isSubmitting },
+    setError,
+  } = form;
+
+  const onSubmit = async (values: LoginValues) => {
+    const parsed = loginSchema.safeParse(values);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      const fieldName = first?.path[0];
+      if (fieldName && typeof fieldName === "string") {
+        setError(fieldName as keyof LoginValues, {
+          type: "manual",
+          message: first.message,
+        });
+      }
+      sileo.error({
+        title: "Revisa el formulario",
+        description: first?.message ?? "Completa los campos correctamente.",
+      });
+      return;
+    }
 
     try {
-      const user = await authLogin({ email, password });
+      const user = await authLogin(values);
       login({
         _id: user._id,
         name: user.name,
         email: user.email,
         isSuperadmin: user.isSuperadmin,
+      });
+      sileo.success({
+        title: "Bienvenido",
+        description: user.name ? `Hola, ${user.name}` : "Sesión iniciada.",
       });
       if (user.isSuperadmin) {
         router.push("/superadmin");
@@ -35,76 +85,127 @@ export default function LoginPage() {
         router.push("/tenants");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al iniciar sesión");
-    } finally {
-      setIsSubmitting(false);
+      const rawMessage =
+        err instanceof Error ? err.message : "Error al iniciar sesión";
+
+      const lower = rawMessage.toLowerCase();
+      let friendly =
+        "Ha ocurrido un error al iniciar sesión. Inténtalo de nuevo.";
+
+      if (
+        lower.includes("credenciales inválidas") ||
+        lower.includes("invalid credentials")
+      ) {
+        friendly = "Credenciales inválidas. Verifica tu correo y contraseña.";
+      }
+
+      sileo.error({
+        title: "Error al iniciar sesión",
+        description: friendly,
+      });
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white px-4">
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-200/50">
-        <div className="mb-8 text-center">
-          <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-red-600 text-xl font-bold text-white shadow-lg shadow-red-600/30">
-            R
-          </span>
-          <h1 className="mt-4 text-2xl font-semibold text-slate-800">
-            Restaurantes SaaS
-          </h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Inicia sesión para acceder a tu panel.
-          </p>
+    <div className="flex min-h-screen items-center justify-center bg-linear-to-b from-zinc-50 via-zinc-50 to-red-50 px-4 py-10">
+      <div className="grid min-h-[80vh] p-4 w-full max-w-5xl grid-cols-1 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.18)] md:grid-cols-2">
+        <div className="flex items-center px-6 py-8 sm:px-10">
+          <div className="w-full max-w-sm space-y-8">
+            <div className="space-y-4">
+              <div className="flex justify-center">
+                <Image
+                  src="/logos/mezzi.svg"
+                  alt="Logo Mezzi"
+                  width={180}
+                  height={80}
+                />
+              </div>
+              <p className="text-sm text-zinc-500 text-center">
+                Ingresa tus credenciales para acceder al panel de restaurantes.
+              </p>
+            </div>
+
+            <Form {...form}>
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Correo electrónico</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="email"
+                          placeholder="tu@restaurante.com"
+                          autoComplete="email"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contraseña</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Input
+                            type={showPassword ? "text" : "password"}
+                            placeholder="••••••••"
+                            autoComplete="current-password"
+                            className="pr-10"
+                            {...field}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword((prev) => !prev)}
+                            className="absolute inset-y-0 right-3 flex items-center justify-center text-zinc-400 hover:text-zinc-600"
+                            aria-label={
+                              showPassword
+                                ? "Ocultar contraseña"
+                                : "Ver contraseña"
+                            }
+                          >
+                            {showPassword ? (
+                              <EyeOff className="h-4 w-4" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="pt-2">
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="h-11 w-full rounded-2xl px-4"
+                  >
+                    {isSubmitting ? "Entrando..." : "Iniciar sesión"}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </div>
         </div>
 
-        <form className="space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-slate-700">
-              Correo electrónico
-            </label>
-            <input
-              id="email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
-              placeholder="tu@ejemplo.com"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-slate-700">
-              Contraseña
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-800 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
-              placeholder="••••••••"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="flex w-full items-center justify-center rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-red-600/25 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSubmitting ? "Entrando..." : "Entrar"}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-xs text-slate-400">
-          SaaS Restaurantes — Un solo login para superadmin y administradores.
-        </p>
+        <div className="relative h-full  hidden  w-full overflow-hidden bg-[#fff5f5] md:block">
+          <Image
+            src="https://mezzi.s3.us-east-1.amazonaws.com/Gemini_Generated_Image_gb657mgb657mgb65.webp"
+            alt="Panel de ejemplo"
+            fill
+            className="object-cover object-top rounded-3xl"
+          />
+        </div>
       </div>
     </div>
   );

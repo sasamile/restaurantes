@@ -1,4 +1,4 @@
-import { SuperadminShell } from "../../components/superadmin-shell";
+import { SuperadminShell } from "@/components/superadmin-shell";
 
 export default function SuperadminLayout({
   children,

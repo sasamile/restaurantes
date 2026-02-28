@@ -28,20 +28,9 @@ export const get = query({
   },
 });
 
-export const getBySlug = query({
-  args: { slug: v.string() },
-  handler: async (ctx, args) => {
-    return await ctx.db
-      .query("tenants")
-      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
-      .first();
-  },
-});
-
 export const create = mutation({
   args: {
     name: v.string(),
-    slug: v.string(),
     status: v.union(
       v.literal("active"),
       v.literal("trial"),
@@ -50,23 +39,19 @@ export const create = mutation({
     planId: v.optional(v.id("plans")),
     primaryColor: v.optional(v.string()),
     secondaryColor: v.optional(v.string()),
+    logoUrl: v.optional(v.string()),
     address: v.optional(v.string()),
     phone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    const existing = await ctx.db
-      .query("tenants")
-      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
-      .first();
-    if (existing) throw new Error("Ya existe un restaurante con ese slug");
     return await ctx.db.insert("tenants", {
       name: args.name,
-      slug: args.slug,
       status: args.status,
       planId: args.planId,
       primaryColor: args.primaryColor,
       secondaryColor: args.secondaryColor,
+      logoUrl: args.logoUrl,
       address: args.address,
       phone: args.phone,
       createdAt: now,
@@ -78,7 +63,6 @@ export const update = mutation({
   args: {
     tenantId: v.id("tenants"),
     name: v.optional(v.string()),
-    slug: v.optional(v.string()),
     status: v.optional(
       v.union(
         v.literal("active"),
@@ -89,6 +73,7 @@ export const update = mutation({
     planId: v.optional(v.id("plans")),
     primaryColor: v.optional(v.string()),
     secondaryColor: v.optional(v.string()),
+    logoUrl: v.optional(v.string()),
     address: v.optional(v.string()),
     phone: v.optional(v.string()),
   },
@@ -97,14 +82,6 @@ export const update = mutation({
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([, v]) => v !== undefined)
     );
-    if (filtered.slug) {
-      const existing = await ctx.db
-        .query("tenants")
-        .withIndex("by_slug", (q) => q.eq("slug", filtered.slug as string))
-        .first();
-      if (existing && existing._id !== tenantId)
-        throw new Error("Ya existe un restaurante con ese slug");
-    }
     await ctx.db.patch(tenantId, filtered);
     return tenantId;
   },
@@ -164,13 +141,11 @@ export const seedDemo = mutation({
 
     const t1 = await ctx.db.insert("tenants", {
       name: "Restaurante La Parrilla",
-      slug: "la-parrilla",
       status: "active",
       createdAt: now,
     });
     const t2 = await ctx.db.insert("tenants", {
       name: "Pizzería Napoli",
-      slug: "pizzeria-napoli",
       status: "trial",
       createdAt: now,
     });

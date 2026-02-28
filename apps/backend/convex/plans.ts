@@ -18,24 +18,15 @@ export const get = query({
 export const create = mutation({
   args: {
     name: v.string(),
-    slug: v.string(),
     price: v.number(),
-    maxRestaurantes: v.number(),
-    maxUsuarios: v.number(),
+    priceAnnual: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    const existing = await ctx.db
-      .query("plans")
-      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
-      .first();
-    if (existing) throw new Error("Ya existe un plan con ese slug");
     return await ctx.db.insert("plans", {
       name: args.name,
-      slug: args.slug,
       price: args.price,
-      maxRestaurantes: args.maxRestaurantes,
-      maxUsuarios: args.maxUsuarios,
+      priceAnnual: args.priceAnnual,
       createdAt: now,
     });
   },
@@ -45,24 +36,14 @@ export const update = mutation({
   args: {
     planId: v.id("plans"),
     name: v.optional(v.string()),
-    slug: v.optional(v.string()),
     price: v.optional(v.number()),
-    maxRestaurantes: v.optional(v.number()),
-    maxUsuarios: v.optional(v.number()),
+    priceAnnual: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const { planId, ...updates } = args;
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([, v]) => v !== undefined)
     );
-    if (filtered.slug) {
-      const existing = await ctx.db
-        .query("plans")
-        .withIndex("by_slug", (q) => q.eq("slug", filtered.slug as string))
-        .first();
-      if (existing && existing._id !== planId)
-        throw new Error("Ya existe un plan con ese slug");
-    }
     await ctx.db.patch(planId, filtered);
     return planId;
   },
@@ -83,9 +64,9 @@ export const seed = mutation({
     const now = Date.now();
     const existing = await ctx.db.query("plans").first();
     if (existing) throw new Error("Ya existen planes. Elimínalos primero si quieres re-seed.");
-    await ctx.db.insert("plans", { name: "Básico", slug: "basico", price: 0, maxRestaurantes: 1, maxUsuarios: 2, createdAt: now });
-    await ctx.db.insert("plans", { name: "Pro", slug: "pro", price: 49, maxRestaurantes: 5, maxUsuarios: 10, createdAt: now });
-    await ctx.db.insert("plans", { name: "Empresa", slug: "empresa", price: 149, maxRestaurantes: -1, maxUsuarios: -1, createdAt: now });
+    await ctx.db.insert("plans", { name: "Básico", price: 0, priceAnnual: 0, createdAt: now });
+    await ctx.db.insert("plans", { name: "Pro", price: 49, priceAnnual: 470, createdAt: now });
+    await ctx.db.insert("plans", { name: "Empresa", price: 149, priceAnnual: 1430, createdAt: now });
     return "Planes creados";
   },
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { Toaster } from "sileo";
 
 const url = process.env.NEXT_PUBLIC_CONVEX_URL;
 const isConfigured = url && url.length > 0 && !url.includes("placeholder");
@@ -23,5 +24,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }
 
   const convex = new ConvexReactClient(url);
-  return <ConvexProvider client={convex}>{children}</ConvexProvider>;
+  return (
+    <ConvexProvider client={convex}>
+      {children}
+      <Toaster position="top-center" theme="dark" />
+    </ConvexProvider>
+  );
 }

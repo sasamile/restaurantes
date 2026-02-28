@@ -18,6 +18,7 @@ import type * as messages from "../messages.js";
 import type * as plans from "../plans.js";
 import type * as prompts from "../prompts.js";
 import type * as rolePermissions from "../rolePermissions.js";
+import type * as s3Logo from "../s3Logo.js";
 import type * as superadmin from "../superadmin.js";
 import type * as system_ai_agents_supportAgent from "../system/ai/agents/supportAgent.js";
 import type * as system_ai_constants from "../system/ai/constants.js";
@@ -26,6 +27,7 @@ import type * as system_ai_tools_resolveConversation from "../system/ai/tools/re
 import type * as system_ai_tools_search from "../system/ai/tools/search.js";
 import type * as system_conversations from "../system/conversations.js";
 import type * as system_ycloud from "../system/ycloud.js";
+import type * as tenantForm from "../tenantForm.js";
 import type * as tenants from "../tenants.js";
 import type * as users from "../users.js";
 import type * as ycloud from "../ycloud.js";
@@ -47,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   plans: typeof plans;
   prompts: typeof prompts;
   rolePermissions: typeof rolePermissions;
+  s3Logo: typeof s3Logo;
   superadmin: typeof superadmin;
   "system/ai/agents/supportAgent": typeof system_ai_agents_supportAgent;
   "system/ai/constants": typeof system_ai_constants;
@@ -55,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   "system/ai/tools/search": typeof system_ai_tools_search;
   "system/conversations": typeof system_conversations;
   "system/ycloud": typeof system_ycloud;
+  tenantForm: typeof tenantForm;
   tenants: typeof tenants;
   users: typeof users;
   ycloud: typeof ycloud;

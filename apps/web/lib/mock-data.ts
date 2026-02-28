@@ -21,14 +21,12 @@ export const tenants: Tenant[] = [
   {
     id: "tenant_1",
     name: "Restaurante La Parrilla",
-    slug: "la-parrilla",
     status: "active",
     createdAt: "2025-01-10T12:00:00Z",
   },
   {
     id: "tenant_2",
     name: "Pizzería Napoli",
-    slug: "pizzeria-napoli",
     status: "trial",
     createdAt: "2025-02-01T09:30:00Z",
   },

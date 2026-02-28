@@ -3,7 +3,6 @@ export type Role = "OWNER" | "ADMIN" | "AGENT" | "VIEWER";
 export interface Tenant {
   id: string;
   name: string;
-  slug: string;
   status: "active" | "trial" | "cancelled";
   createdAt: string;
 }

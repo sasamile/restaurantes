@@ -5,27 +5,24 @@ export default defineSchema({
   // Planes del SaaS
   plans: defineTable({
     name: v.string(),
-    slug: v.string(),
-    price: v.number(),
-    maxRestaurantes: v.number(), // -1 = ilimitado
-    maxUsuarios: v.number(),
+    price: v.number(), // precio mensual ($/mes)
+    priceAnnual: v.optional(v.number()), // precio anual ($/año), si no existe se usa price*12
     createdAt: v.number(),
-  })
-    .index("by_slug", ["slug"]),
+  }),
 
-  // Restaurantes (tenants) del SaaS
+  // Restaurantes (tenants) del SaaS (slug opcional: solo para documentos antiguos, ya no se usa)
   tenants: defineTable({
     name: v.string(),
-    slug: v.string(),
+    slug: v.optional(v.string()),
     status: v.union(v.literal("active"), v.literal("trial"), v.literal("cancelled")),
     planId: v.optional(v.id("plans")),
-    primaryColor: v.optional(v.string()), // cada restaurante configura colores
+    primaryColor: v.optional(v.string()),
     secondaryColor: v.optional(v.string()),
+    logoUrl: v.optional(v.string()),
     address: v.optional(v.string()),
     phone: v.optional(v.string()),
     createdAt: v.number(),
   })
-    .index("by_slug", ["slug"])
     .index("by_status", ["status"]),
 
   // Usuarios del sistema (puedes enlazar después con Convex Auth)
@@ -147,4 +144,40 @@ export default defineSchema({
   })
     .index("by_tenant", ["tenantId"])
     .index("by_tenant_default", ["tenantId", "isDefault"]),
+
+  // Formulario personalizado por restaurante (para generar prompt desde respuestas)
+  tenantFormConfig: defineTable({
+    tenantId: v.id("tenants"),
+    title: v.string(),
+    fields: v.array(
+      v.object({
+        id: v.string(),
+        label: v.string(),
+        key: v.string(),
+        type: v.union(v.literal("text"), v.literal("textarea")),
+      })
+    ),
+    includeColorTheme: v.optional(v.boolean()), // si true, el form público muestra selector de colores + vista previa
+    updatedAt: v.number(),
+  }).index("by_tenant", ["tenantId"]),
+
+  // Enlace público de un solo uso por restaurante
+  tenantFormShare: defineTable({
+    tenantId: v.id("tenants"),
+    token: v.string(),
+    createdAt: v.number(),
+    usedAt: v.optional(v.number()),
+  })
+    .index("by_tenant", ["tenantId"])
+    .index("by_token", ["token"]),
+
+  // Respuestas enviadas desde el formulario público
+  formSubmissions: defineTable({
+    tenantId: v.id("tenants"),
+    token: v.string(),
+    responses: v.string(), // JSON: { [key]: value }
+    createdAt: v.number(),
+  })
+    .index("by_tenant", ["tenantId"])
+    .index("by_tenant_created", ["tenantId", "createdAt"]),
 });
