@@ -9,7 +9,13 @@ import {
   escalateConversation,
   resolveConversation,
 } from "./ai/tools/resolveConversation";
+import { setPriority } from "./ai/tools/setPriority";
 import { search } from "./ai/tools/search";
+import { createReservation } from "./ai/tools/createReservation";
+import { createPQR } from "./ai/tools/createPQR";
+import { createOrder } from "./ai/tools/createOrder";
+import { updateOrder } from "./ai/tools/updateOrder";
+import { cancelOrder } from "./ai/tools/cancelOrder";
 import type { PaginationResult } from "convex/server";
 import type { MessageDoc } from "@convex-dev/agent";
 import { Id } from "../_generated/dataModel";
@@ -44,6 +50,15 @@ export const processInboundMessage = internalAction({
       v.literal("webchat")
     ),
     text: v.string(),
+    mediaUrl: v.optional(v.string()),
+    mediaType: v.optional(
+      v.union(
+        v.literal("image"),
+        v.literal("video"),
+        v.literal("audio"),
+        v.literal("document")
+      )
+    ),
   },
   handler: async (ctx, args): Promise<void> => {
     try {
@@ -71,6 +86,8 @@ export const processInboundMessage = internalAction({
         tenantId: args.tenantId,
         direction: "INBOUND",
         content: args.text,
+        mediaUrl: args.mediaUrl,
+        mediaType: args.mediaType,
       });
 
       const conversation = await ctx.runQuery(
@@ -83,22 +100,46 @@ export const processInboundMessage = internalAction({
         return;
       }
 
-      const shouldTriggerAgent = conversation.status === "open";
+      // assignedTo null/undefined = Bot activo; assignedTo set = Agente humano (bot no responde)
+      const isBotMode = !conversation.assignedTo;
+
+      // Si la conversación estaba cerrada y el cliente volvió a escribir -> reabrir para que el bot responda
+      if (conversation.status === "closed" && isBotMode) {
+        await ctx.runMutation(internal.system.conversations.reopen, {
+          threadId,
+        });
+      }
+
+      // Bot responde: open, o closed (acabamos de reabrir). No responde si pending (necesita humano)
+      const shouldTriggerAgent =
+        (conversation.status === "open" || conversation.status === "closed") &&
+        isBotMode;
 
       if (shouldTriggerAgent) {
         const tenantPrompt = await ctx.runQuery(api.prompts.getDefault, {
           tenantId: args.tenantId,
         });
+        const now = new Date();
+        const today = now.toISOString().slice(0, 10);
+        const timeHint = now.toTimeString().slice(0, 5);
+        const dateTimeContext = `[Fecha y hora actual para interpretar "hoy" o "mañana": ${today}, aprox. ${timeHint}. Usa esta fecha cuando el cliente diga "hoy" o "para hoy.]\n\n`;
         const promptWithContext =
-          tenantPrompt?.prompt?.trim()
+          dateTimeContext +
+          (tenantPrompt?.prompt?.trim()
             ? `[Contexto del restaurante - prioriza esto:]\n${tenantPrompt.prompt}\n\n[Cliente dice:]\n${args.text}`
-            : args.text;
+            : `[Cliente dice:]\n${args.text}`);
 
         await supportAgent.generateText(ctx, { threadId }, {
           prompt: promptWithContext,
           tools: {
             searchTool: search,
+            createReservationTool: createReservation,
+            createOrderTool: createOrder,
+            updateOrderTool: updateOrder,
+            cancelOrderTool: cancelOrder,
+            createPQRTool: createPQR,
             escalateConversationTool: escalateConversation,
+            setPriorityTool: setPriority,
             resolveConversationTool: resolveConversation,
           },
         });
@@ -155,6 +196,45 @@ export const processInboundMessage = internalAction({
         error: err instanceof Error ? err.message : String(err),
       });
       throw err;
+    }
+  },
+});
+
+/** Envía un mensaje de texto por WhatsApp a un número (sin conversación). Usado p. ej. para notificar pedido despachado. */
+export const sendWhatsAppToPhone = internalAction({
+  args: {
+    tenantId: v.id("tenants"),
+    phoneNumber: v.string(),
+    content: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const integration = await ctx.runQuery(api.integrations.getYCloudForSend, {
+      tenantId: args.tenantId,
+    });
+    if (!integration) {
+      console.warn("notifyOrderDispatched: YCloud no configurado para tenant");
+      return;
+    }
+    const toRaw = args.phoneNumber.replace(/^whatsapp:/, "").trim().replace(/\s/g, "");
+    const to = toRaw.startsWith("+") ? toRaw : `+${toRaw}`;
+    const fromRaw = integration.phoneNumber.trim().replace(/\s/g, "");
+    const from = fromRaw.startsWith("+") ? fromRaw : `+${fromRaw}`;
+    const res = await fetch("https://api.ycloud.com/v2/whatsapp/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": integration.apiKey,
+      },
+      body: JSON.stringify({
+        from,
+        to,
+        type: "text",
+        text: { body: args.content.trim() },
+      }),
+    });
+    const data = (await res.json()) as { id?: string; status?: string; message?: string };
+    if (!res.ok) {
+      console.error("YCloud sendWhatsAppToPhone:", data.message ?? data.status ?? res.statusText);
     }
   },
 });

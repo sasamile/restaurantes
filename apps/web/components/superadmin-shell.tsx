@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Building2,
   BadgeDollarSign,
+  Users,
   LogOut,
 } from "lucide-react";
 import { useQuery } from "convex/react";
@@ -86,6 +87,7 @@ export function SuperadminShell({ children }: SuperadminShellProps) {
               { href: "/superadmin", icon: LayoutDashboard },
               { href: "/superadmin/restaurantes", icon: Building2 },
               { href: "/superadmin/planes", icon: BadgeDollarSign },
+              { href: "/superadmin/usuarios-superadmin", icon: Users },
             ].map(({ href, icon: Icon }) => {
               const active =
                 pathname === href ||

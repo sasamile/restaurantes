@@ -32,6 +32,19 @@ export const resolve = internalMutation({
   },
 });
 
+/** Reabrir conversación cerrada (cliente volvió a escribir) */
+export const reopen = internalMutation({
+  args: { threadId: v.string() },
+  handler: async (ctx, args) => {
+    const conv = await ctx.db
+      .query("conversations")
+      .withIndex("by_thread_id", (q) => q.eq("threadId", args.threadId))
+      .unique();
+    if (!conv) return;
+    await ctx.db.patch(conv._id, { status: "open", updatedAt: Date.now() });
+  },
+});
+
 export const getByThreadId = internalQuery({
   args: { threadId: v.string() },
   handler: async (ctx, args) => {

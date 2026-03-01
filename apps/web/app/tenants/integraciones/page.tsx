@@ -1,21 +1,53 @@
 "use client";
 
-import { useQuery, useMutation } from "convex/react";
+import { useState, useMemo } from "react";
+import { useQuery } from "convex/react";
 import { api } from "@/convex";
 import { useTenant } from "@/lib/tenant-context";
-import { useState, useEffect } from "react";
+import {
+  INTEGRATIONS_CATALOG,
+  INTEGRATION_CATEGORIES,
+  type IntegrationDefinition,
+  type IntegrationStatus,
+  type IntegrationCategory,
+} from "@/lib/integrations-catalog";
+import { IntegrationCard } from "@/components/integrations/integration-card";
+import { IntegrationConfigModal } from "@/components/integrations/integration-config-modal";
+import { IntegrationsIntroModal } from "@/components/integrations/integrations-intro-modal";
+import { Search } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-function getWebhookUrl(tenantId: string): string {
-  const convexUrl =
-    (typeof window !== "undefined" && (window as unknown as { __CONVEX_URL__?: string }).__CONVEX_URL__) ||
-    process.env.NEXT_PUBLIC_CONVEX_URL ||
-    "";
-  const siteUrl = convexUrl.replace(".convex.cloud", ".convex.site");
-  return `${siteUrl}/webhooks/ycloud/${tenantId}`;
+const DEFAULT_PRIMARY = "#197fe6";
+
+function getIntegrationStatus(
+  integration: IntegrationDefinition,
+  ycloud: { connected?: boolean; hasApiKey?: boolean; phoneNumber?: string | null } | null | undefined,
+  googleCalendar: { connected?: boolean } | null | undefined
+): IntegrationStatus {
+  if (!integration.enabledForUsers) return "coming_soon";
+
+  if (integration.id === "ycloud") {
+    if (!ycloud) return "not_connected";
+    if (ycloud.connected) return "connected";
+    if (ycloud.hasApiKey || ycloud.phoneNumber) return "pending_config";
+    return "not_connected";
+  }
+
+  if (integration.id === "google-calendar") {
+    if (!googleCalendar) return "not_connected";
+    if (googleCalendar.connected) return "connected";
+    return "not_connected";
+  }
+
+  return "coming_soon";
 }
 
 export default function IntegracionesPage() {
   const { tenantId } = useTenant();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedIntegration, setSelectedIntegration] =
+    useState<IntegrationDefinition | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const tenant = useQuery(
     api.tenants.get,
@@ -25,52 +57,42 @@ export default function IntegracionesPage() {
     api.integrations.getYCloud,
     tenantId ? { tenantId } : "skip"
   );
-  const regenerateWebhook = useMutation(
-    api.integrations.regenerateWebhookPath
+  const googleCalendar = useQuery(
+    api.googleCalendar.get,
+    tenantId ? { tenantId } : "skip"
   );
-  const saveYCloud = useMutation(api.integrations.saveYCloud);
 
-  const [ycloudExpanded, setYcloudExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const primaryColor = tenant?.primaryColor ?? DEFAULT_PRIMARY;
 
-  const webhookUrl = tenantId ? getWebhookUrl(tenantId) : "";
+  const filteredBySearch = useMemo(() => {
+    if (!searchQuery.trim()) return INTEGRATIONS_CATALOG;
+    const q = searchQuery.toLowerCase().trim();
+    return INTEGRATIONS_CATALOG.filter(
+      (i) =>
+        i.name.toLowerCase().includes(q) ||
+        i.description.toLowerCase().includes(q) ||
+        INTEGRATION_CATEGORIES[i.category].label.toLowerCase().includes(q)
+    );
+  }, [searchQuery]);
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(webhookUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const groupedByCategory = useMemo(() => {
+    const groups: Record<IntegrationCategory, IntegrationDefinition[]> = {
+      messaging: [],
+      calendar: [],
+      storage: [],
+      ai: [],
+      payments: [],
+    };
+    for (const i of filteredBySearch) {
+      groups[i.category].push(i);
+    }
+    return groups;
+  }, [filteredBySearch]);
 
-  const handleRegenerate = async () => {
-    if (!tenantId) return;
-    await regenerateWebhook({ tenantId });
-  };
-
-  const [phoneInput, setPhoneInput] = useState("");
-  const [apiKeyInput, setApiKeyInput] = useState("");
-
-  useEffect(() => {
-    if (ycloud?.phoneNumber !== undefined)
-      setPhoneInput(ycloud.phoneNumber ?? "");
-  }, [ycloud?.phoneNumber]);
-
-  const handleSavePhone = async () => {
-    if (!tenantId) return;
-    await saveYCloud({ tenantId, phoneNumber: phoneInput.trim() || undefined });
-  };
-
-  const handleSaveApiKey = async () => {
-    if (!tenantId) return;
-    await saveYCloud({
-      tenantId,
-      apiKey: apiKeyInput.trim() || undefined,
-    });
-    setApiKeyInput(""); // Limpiar tras guardar (no mostramos el valor por seguridad)
-  };
-
-  const handleDisconnect = async () => {
-    if (!tenantId) return;
-    await saveYCloud({ tenantId, connected: false });
+  const handleCardClick = (integration: IntegrationDefinition) => {
+    if (!integration.enabledForUsers) return;
+    setSelectedIntegration(integration);
+    setModalOpen(true);
   };
 
   if (!tenantId) {
@@ -82,162 +104,107 @@ export default function IntegracionesPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto w-full">
-      <div className="mb-6">
-        <h1 className="text-lg font-semibold text-slate-900">
-          Integraciones — {tenant?.name ?? "Restaurante"}
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Conecta canales de mensajería (WhatsApp, etc.) para recibir y enviar
-          mensajes en el Inbox.
-        </p>
-      </div>
+    <div
+      className="flex min-h-full flex-col overflow-y-auto p-6 sm:p-8 md:p-10"
+      style={{ "--primaryColor": primaryColor } as React.CSSProperties}
+    >
+      <div className="mx-auto w-full max-w-6xl">
+        {/* Header */}
+        <header className="mb-8">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+            Centro de Integraciones
+          </h1>
+          <p className="mt-2 text-base text-slate-500 sm:text-lg">
+            Conecta tus herramientas externas para habilitar funcionalidades del
+            sistema.
+          </p>
+        </header>
 
-      <div className="space-y-4">
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setYcloudExpanded(!ycloudExpanded)}
-            className="w-full flex items-center justify-between px-4 py-4 text-left hover:bg-slate-50 transition-colors"
-          >
-            <div className="flex items-center gap-4">
-              <div className="size-12 rounded-xl bg-[#197fe6]/10 flex items-center justify-center">
-                <span className="material-symbols-outlined text-[#197fe6] text-2xl">
-                  chat
-                </span>
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">YCloud</h2>
-                <p className="text-xs text-slate-500">
-                  WhatsApp, Messenger y canales conectados
-                </p>
-              </div>
-            </div>
-            <span className="material-symbols-outlined text-slate-400">
-              {ycloudExpanded ? "expand_less" : "expand_more"}
-            </span>
-          </button>
+        {/* Modal de intro en primera visita */}
+        <IntegrationsIntroModal primaryColor={primaryColor} />
 
-          {ycloudExpanded && (
-            <div className="border-t border-slate-200 bg-slate-50/50 p-6">
-              <div className="max-w-2xl">
-                <h3 className="text-sm font-semibold text-slate-900 mb-1">
-                  Webhook personalizado
-                </h3>
-                <p className="text-xs text-slate-500 mb-4">
-                  Copia esta URL única en el panel de YCloud para este
-                  restaurante. Conéctate aquí para recibir y enviar mensajes en
-                  el Inbox.
-                </p>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700 font-mono break-all">
-                    {webhookUrl || "Cargando…"}
+        {/* Buscador */}
+        <div className="mb-8">
+          <div className="relative max-w-md">
+            <Search
+              className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400"
+              strokeWidth={2}
+            />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar integración…"
+              className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm text-slate-700 placeholder:text-slate-400 transition-colors focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            />
+          </div>
+        </div>
+
+        {/* Grid de integraciones por categoría */}
+        <div className="mt-10 space-y-10">
+          {(Object.keys(groupedByCategory) as IntegrationCategory[]).map(
+            (category) => {
+              const items = groupedByCategory[category];
+              if (items.length === 0) return null;
+
+              const catMeta = INTEGRATION_CATEGORIES[category];
+              const CatIcon = catMeta.icon;
+
+              return (
+                <section key={category}>
+                  <div className="mb-4 flex items-center gap-2">
+                    <CatIcon
+                      className="size-5 text-slate-500"
+                      strokeWidth={2}
+                    />
+                    <h2 className="text-lg font-semibold text-slate-800">
+                      {catMeta.label}
+                    </h2>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleCopy}
-                    className="shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+
+                  <div
+                    className={cn(
+                      "grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                    )}
                   >
-                    {copied ? "Copiado" : "Copiar"}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRegenerate}
-                  className="mt-3 text-xs font-medium text-slate-500 hover:text-slate-700"
-                >
-                  Regenerar webhook
-                </button>
-                <h3 className="mt-6 text-sm font-semibold text-slate-900 mb-2">
-                  API Key de YCloud
-                </h3>
-                <p className="text-xs text-slate-500 mb-2">
-                  Necesaria para enviar mensajes. Obténla en YCloud Console →{" "}
-                  <span className="font-medium">Developers → API Keys</span>
-                </p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="password"
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    placeholder={
-                      ycloud?.hasApiKey ? "•••••••• (dejar en blanco para mantener)" : "Introduce tu API Key"
-                    }
-                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#197fe6] focus:outline-none focus:ring-1 focus:ring-[#197fe6]"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveApiKey}
-                    className="shrink-0 rounded-lg bg-[#197fe6] px-3 py-2.5 text-xs font-medium text-white hover:bg-[#1565c0] disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={!apiKeyInput.trim()}
-                  >
-                    Guardar API Key
-                  </button>
-                </div>
-                {ycloud?.hasApiKey && (
-                  <p className="mt-1.5 text-xs text-emerald-600">
-                    API Key configurada
-                  </p>
-                )}
-                <h3 className="mt-6 text-sm font-semibold text-slate-900 mb-2">
-                  Número de WhatsApp / YCloud a conectar
-                </h3>
-                <p className="text-xs text-slate-500 mb-2">
-                  Indica el número de teléfono que usarás en YCloud para enviar
-                  y recibir mensajes (ej: +34 612 345 678).
-                </p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="tel"
-                    value={phoneInput}
-                    onChange={(e) => setPhoneInput(e.target.value)}
-                    placeholder="+34 612 345 678"
-                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#197fe6] focus:outline-none focus:ring-1 focus:ring-[#197fe6]"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSavePhone}
-                    className="shrink-0 rounded-lg bg-[#197fe6] px-3 py-2.5 text-xs font-medium text-white hover:bg-[#1565c0]"
-                  >
-                    Guardar número
-                  </button>
-                </div>
-                {!ycloud?.connected && (ycloud?.phoneNumber || phoneInput) && (
-                  <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                    <p className="text-sm text-amber-800 font-medium mb-1">
-                      Pendiente de validación
-                    </p>
-                    <p className="text-xs text-amber-700">
-                      Por favor envía un mensaje desde ese número de WhatsApp
-                      para validar la conexión. Cuando recibamos el primer
-                      mensaje, el estado pasará a Conectado.
-                    </p>
+                    {items.map((integration) => (
+                      <IntegrationCard
+                        key={integration.id}
+                        integration={integration}
+                        status={getIntegrationStatus(
+                          integration,
+                          ycloud,
+                          googleCalendar
+                        )}
+                        primaryColor={primaryColor}
+                        onClick={() => handleCardClick(integration)}
+                      />
+                    ))}
                   </div>
-                )}
-                <div className="mt-4 flex items-center justify-between gap-4 rounded-lg bg-slate-100 px-3 py-2">
-                  <span className="text-[11px] text-slate-600">
-                    <span className="font-semibold">Estado:</span>{" "}
-                    {ycloud?.connected
-                      ? "Conectado"
-                      : ycloud?.phoneNumber
-                        ? "Pendiente de validación"
-                        : "Sin configurar"}
-                  </span>
-                  {ycloud?.connected && (
-                    <button
-                      type="button"
-                      onClick={handleDisconnect}
-                      className="text-xs font-medium text-amber-600 hover:text-amber-700"
-                    >
-                      Desconectar
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+                </section>
+              );
+            }
           )}
         </div>
+
+        {filteredBySearch.length === 0 && (
+          <div className="py-12 text-center">
+            <p className="text-sm text-slate-500">
+              No se encontraron integraciones para &quot;{searchQuery}&quot;
+            </p>
+          </div>
+        )}
       </div>
+
+      {/* Modal de configuración */}
+      <IntegrationConfigModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        integration={selectedIntegration}
+        tenantId={tenantId}
+        primaryColor={primaryColor}
+        onSuccess={() => setModalOpen(false)}
+      />
     </div>
   );
 }

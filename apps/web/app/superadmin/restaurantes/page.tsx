@@ -45,7 +45,7 @@ export default function RestaurantesPage() {
 
   return (
     <div
-      className="mx-auto w-full max-w-[1280px] rounded-3xl px-8 py-10 sm:px-10 md:px-12"
+      className="mx-auto w-full max-w-[1280px] rounded-3xl h-full px-8 py-10 sm:px-10 md:px-12"
       style={{ backgroundColor: "#F8FAFC" }}
     >
       <RestaurantesHeader onCreateClick={openCreate} />

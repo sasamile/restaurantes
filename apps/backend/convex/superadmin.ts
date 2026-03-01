@@ -111,3 +111,19 @@ export const getRecentActivity = query({
     return activities.slice(0, limit);
   },
 });
+
+/** Lista usuarios superadmin (sin passwordHash) */
+export const listSuperadminUsers = query({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("isSuperadmin"), true))
+      .order("desc")
+      .collect();
+    return users.map((u) => {
+      const { passwordHash: _, ...safe } = u;
+      return safe;
+    });
+  },
+});

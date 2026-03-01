@@ -28,6 +28,20 @@ export const get = query({
   },
 });
 
+export const generateLogoUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const getStorageUrl = query({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    return await ctx.storage.getUrl(args.storageId);
+  },
+});
+
 export const create = mutation({
   args: {
     name: v.string(),
@@ -74,11 +88,17 @@ export const update = mutation({
     primaryColor: v.optional(v.string()),
     secondaryColor: v.optional(v.string()),
     logoUrl: v.optional(v.string()),
+    logoStorageId: v.optional(v.id("_storage")),
     address: v.optional(v.string()),
     phone: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { tenantId, ...updates } = args;
+    const { tenantId, logoStorageId, ...rest } = args;
+    const updates: Record<string, unknown> = { ...rest };
+    if (logoStorageId) {
+      const url = await ctx.storage.getUrl(logoStorageId);
+      if (url) updates.logoUrl = url;
+    }
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([, v]) => v !== undefined)
     );

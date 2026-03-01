@@ -11,6 +11,12 @@ const statusValidator = v.union(
   v.literal("closed"),
   v.literal("pending")
 );
+const priorityValidator = v.union(
+  v.literal("low"),
+  v.literal("normal"),
+  v.literal("high"),
+  v.literal("urgent")
+);
 
 export const listByTenant = query({
   args: { tenantId: v.id("tenants") },
@@ -20,6 +26,17 @@ export const listByTenant = query({
       .withIndex("by_tenant_last_message", (q) => q.eq("tenantId", args.tenantId))
       .order("desc")
       .collect();
+  },
+});
+
+export const countNeedingAttention = query({
+  args: { tenantId: v.id("tenants") },
+  handler: async (ctx, args) => {
+    const all = await ctx.db
+      .query("conversations")
+      .withIndex("by_tenant_last_message", (q) => q.eq("tenantId", args.tenantId))
+      .collect();
+    return all.filter((c) => c.status === "pending").length;
   },
 });
 
@@ -76,6 +93,36 @@ export const updateStatus = mutation({
   handler: async (ctx, args) => {
     const now = Date.now();
     await ctx.db.patch(args.conversationId, { status: args.status, updatedAt: now });
+    return args.conversationId;
+  },
+});
+
+export const updatePriority = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    priority: v.union(priorityValidator, v.null()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await ctx.db.patch(args.conversationId, {
+      priority: args.priority ?? undefined,
+      updatedAt: now,
+    });
+    return args.conversationId;
+  },
+});
+
+export const updateAssignedTo = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    userId: v.union(v.id("users"), v.null()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await ctx.db.patch(args.conversationId, {
+      assignedTo: args.userId ?? undefined,
+      updatedAt: now,
+    });
     return args.conversationId;
   },
 });
