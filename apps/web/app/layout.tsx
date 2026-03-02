@@ -22,6 +22,9 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Restaurantes SaaS | Panel Superadmin",
   description: "Panel Superadmin para gestionar restaurantes, planes, administradores y permisos.",
+  icons: {
+    icon: "/logos/mezzi.icon.svg",
+  },
 };
 
 export default function RootLayout({
