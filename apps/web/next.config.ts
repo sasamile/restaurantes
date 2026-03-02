@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
-        hostname: "*.convex.cloud",
+        hostname: "tough-butterfly-537.convex.cloud",
         pathname: "/api/storage/**",
       },
     ],
