@@ -4,11 +4,13 @@ import { useAction, useQuery } from "convex/react";
 import { useRequireModule } from "@/lib/use-require-module";
 import { api } from "@/convex";
 import { useTenant } from "@/lib/tenant-context";
+import { useAuth } from "@/lib/auth-context";
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Send,
   Loader2,
   MessageCircle,
+  MessageSquarePlus,
   Mic,
   Volume2,
   VolumeX,
@@ -20,6 +22,8 @@ import {
   Zap,
   Calendar,
   BarChart3,
+  Speaker,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -41,11 +45,17 @@ type HistoryItem = {
   sources: string[];
 };
 
-type VoiceConversationState = "idle" | "greeting" | "listening" | "thinking" | "speaking";
+type VoiceConversationState =
+  | "idle"
+  | "greeting"
+  | "listening"
+  | "thinking"
+  | "speaking";
 
 const GREETING_TEXT = "Hola, pregúntame lo que quieras sobre la empresa.";
 const SILENCE_MS = 1600;
 const DAILY_LIMIT = 2000;
+const HISTORY_STORAGE_PREFIX = "learning-history-";
 
 const SUGGESTIONS = [
   "¿Cuáles son nuestros horarios?",
@@ -91,22 +101,72 @@ interface SpeechRecognitionEvent {
   resultIndex: number;
 }
 
+function loadHistoryFromStorage(
+  tenantId: string,
+  userId: string,
+): HistoryItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(
+      `${HISTORY_STORAGE_PREFIX}${tenantId}-${userId}`,
+    );
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as HistoryItem[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistoryToStorage(
+  tenantId: string,
+  userId: string,
+  items: HistoryItem[],
+) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      `${HISTORY_STORAGE_PREFIX}${tenantId}-${userId}`,
+      JSON.stringify(items),
+    );
+  } catch {
+    // ignore
+  }
+}
+
 export default function AprendizajePage() {
   useRequireModule("conocimiento");
   const { tenantId } = useTenant();
+  const { user } = useAuth();
   const ask = useAction(api.chatEmpresa.ask);
   const synthesize = useAction(api.elevenlabs.synthesize);
   const stats = useQuery(
     api.knowledge.getStats,
-    tenantId ? { tenantId } : "skip"
+    tenantId ? { tenantId } : "skip",
   );
   const usage = useQuery(
     api.learning.getUsageToday,
-    tenantId ? { tenantId } : "skip"
+    tenantId ? { tenantId } : "skip",
   );
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+
+  // Cargar historial persistido por usuario
+  useEffect(() => {
+    if (tenantId && user?._id) {
+      setHistory(loadHistoryFromStorage(tenantId, user._id));
+    } else {
+      setHistory([]);
+    }
+  }, [tenantId, user?._id]);
+
+  // Persistir historial al cambiar
+  useEffect(() => {
+    if (tenantId && user?._id && history.length > 0) {
+      saveHistoryToStorage(tenantId, user._id, history);
+    }
+  }, [tenantId, user?._id, history]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -116,7 +176,10 @@ export default function AprendizajePage() {
   const [voiceConversation, setVoiceConversation] = useState(false);
   const [voiceState, setVoiceState] = useState<VoiceConversationState>("idle");
   const [voiceTranscript, setVoiceTranscript] = useState("");
-  const [lastExchange, setLastExchange] = useState<{ user: string; assistant: string } | null>(null);
+  const [lastExchange, setLastExchange] = useState<{
+    user: string;
+    assistant: string;
+  } | null>(null);
   const [ttsBusy, setTtsBusy] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -148,7 +211,7 @@ export default function AprendizajePage() {
         }
         const blob = new Blob(
           [Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))],
-          { type: "audio/mpeg" }
+          { type: "audio/mpeg" },
         );
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
@@ -168,7 +231,7 @@ export default function AprendizajePage() {
         onEnd?.();
       }
     },
-    [synthesize]
+    [synthesize],
   );
 
   const playAudio = useCallback(
@@ -177,13 +240,16 @@ export default function AprendizajePage() {
       setPlayingId(msgIndex);
       await playTTS(text);
     },
-    [playTTS]
+    [playTTS],
   );
 
   const startListening = useCallback(() => {
-    const SpeechRecognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    const SpeechRecognition =
+      window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setInput((prev) => prev + " (El navegador no soporta reconocimiento de voz)");
+      setInput(
+        (prev) => prev + " (El navegador no soporta reconocimiento de voz)",
+      );
       return;
     }
     const recognition = new SpeechRecognition();
@@ -207,9 +273,12 @@ export default function AprendizajePage() {
 
   const startVoiceConversation = useCallback(() => {
     if (!tenantId) return;
-    const SpeechRecognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    const SpeechRecognition =
+      window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setVoiceError("Tu navegador no soporta reconocimiento de voz. Usa Chrome o Edge.");
+      setVoiceError(
+        "Tu navegador no soporta reconocimiento de voz. Usa Chrome o Edge.",
+      );
       return;
     }
     voiceActiveRef.current = true;
@@ -225,7 +294,8 @@ export default function AprendizajePage() {
 
   const startContinuousListening = useCallback(() => {
     if (!voiceActiveRef.current) return;
-    const SpeechRecognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    const SpeechRecognition =
+      window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
     if (silenceTimeoutRef.current) {
@@ -280,9 +350,25 @@ export default function AprendizajePage() {
             setMessages((prev) => [
               ...prev,
               { role: "user", content: toSend },
-              { role: "assistant", content: text, confidence: result.confidence, sources: result.sources ?? [] },
+              {
+                role: "assistant",
+                content: text,
+                confidence: result.confidence,
+                sources: result.sources ?? [],
+              },
             ]);
             setLastExchange({ user: toSend, assistant: text });
+            setHistory((prev) => [
+              {
+                id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                date: Date.now(),
+                query: toSend,
+                reply: text,
+                confidence: result.confidence,
+                sources: result.sources ?? [],
+              },
+              ...prev.slice(0, 49),
+            ]);
             setVoiceState("speaking");
             setPlayingId(-1);
             playTTS(text, () => {
@@ -307,7 +393,9 @@ export default function AprendizajePage() {
       recognitionRef.current = null;
       const err = e as { error?: string };
       if (err.error === "not-allowed") {
-        setVoiceError("Permiso de micrófono denegado. Actívalo en el navegador.");
+        setVoiceError(
+          "Permiso de micrófono denegado. Actívalo en el navegador.",
+        );
         voiceActiveRef.current = false;
         setVoiceState("idle");
         return;
@@ -353,7 +441,9 @@ export default function AprendizajePage() {
 
     const usageToday = usage?.count ?? 0;
     if (usageToday >= DAILY_LIMIT) {
-      setSubmitError(`Límite diario alcanzado (${DAILY_LIMIT} créditos). Vuelve mañana.`);
+      setSubmitError(
+        `Límite diario alcanzado (${DAILY_LIMIT} créditos). Vuelve mañana.`,
+      );
       return;
     }
 
@@ -385,8 +475,12 @@ export default function AprendizajePage() {
         setTimeout(() => playTTS(result.text), 100);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error al obtener respuesta.";
-      setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${msg}` }]);
+      const msg =
+        err instanceof Error ? err.message : "Error al obtener respuesta.";
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `Error: ${msg}` },
+      ]);
       setSubmitError(msg);
     } finally {
       setLoading(false);
@@ -403,6 +497,16 @@ export default function AprendizajePage() {
         sources: item.sources,
       },
     ]);
+  };
+
+  const deleteHistoryItem = (e: React.MouseEvent, itemId: string) => {
+    e.stopPropagation();
+    setHistory((prev) => prev.filter((h) => h.id !== itemId));
+    // Si la conversación abierta es la eliminada, limpiar mensajes
+    const deleted = history.find((h) => h.id === itemId);
+    if (deleted && messages.length === 2 && messages[0]?.content === deleted.query) {
+      setMessages([]);
+    }
   };
 
   const copyToClipboard = (text: string) => {
@@ -429,11 +533,20 @@ export default function AprendizajePage() {
       };
       setMessages((prev) => [...prev, replyMsg]);
       setHistory((prev) => [
-        { id: `${Date.now()}`, date: Date.now(), query: userMsg.content, reply: result.text, confidence: result.confidence, sources: result.sources ?? [] },
+        {
+          id: `${Date.now()}`,
+          date: Date.now(),
+          query: userMsg.content,
+          reply: result.text,
+          confidence: result.confidence,
+          sources: result.sources ?? [],
+        },
         ...prev.slice(0, 49),
       ]);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Error al regenerar.");
+      setSubmitError(
+        err instanceof Error ? err.message : "Error al regenerar.",
+      );
     } finally {
       setLoading(false);
     }
@@ -442,103 +555,6 @@ export default function AprendizajePage() {
   return (
     <div className="flex flex-col h-full bg-slate-50/50">
       {/* Encabezado premium */}
-      <header className="shrink-0 border-b border-slate-200/80 bg-white/90 backdrop-blur-sm px-6 py-5 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-              <span
-                className="size-10 rounded-xl flex items-center justify-center"
-                style={{ backgroundColor: "var(--primarySoft)" }}
-              >
-                <Sparkles className="h-5 w-5" style={{ color: "var(--primaryColor)" }} />
-              </span>
-              Centro de Aprendizaje IA
-            </h1>
-            <p className="text-slate-500 mt-1 max-w-xl">
-              Pregunta lo que quieras sobre tu negocio. La IA responde usando tu base de conocimiento.
-            </p>
-            <div className="flex items-center gap-3 mt-3 flex-wrap">
-              <span
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
-                style={{ backgroundColor: "var(--primarySoft)", color: "var(--primaryColor)" }}
-              >
-                <Zap className="h-3.5 w-3.5" />
-                RAG Activo
-              </span>
-              <span className="text-xs text-slate-400">
-                Base actualizada {formatDaysAgo(stats?.lastUpdatedAt ?? null)}
-              </span>
-              <button
-                type="button"
-                onClick={() => setVoiceConversation((v) => !v)}
-                className={cn(
-                  "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                  voiceConversation
-                    ? "text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                )}
-                style={voiceConversation ? { backgroundColor: "var(--primaryColor)" } : undefined}
-              >
-                <Mic className="h-4 w-4" />
-                Conversación por voz
-              </button>
-              {!voiceConversation && (
-                <button
-                  type="button"
-                  onClick={() => setVoiceMode((v) => !v)}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors",
-                    voiceMode ? "text-(--primaryColor)" : "text-slate-600 hover:bg-slate-100"
-                  )}
-                  style={voiceMode ? { backgroundColor: "var(--primarySoft)" } : undefined}
-                >
-                  {voiceMode ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-                  Reproducir respuesta
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Mini panel métricas */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-slate-100">
-          <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-slate-50">
-            <FileText className="h-4 w-4 text-slate-500" />
-            <div>
-              <p className="text-xs text-slate-500">Documentos</p>
-              <p className="text-sm font-semibold text-slate-800">{stats?.documentCount ?? 0}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-slate-50">
-            <Calendar className="h-4 w-4 text-slate-500" />
-            <div>
-              <p className="text-xs text-slate-500">Última actualización</p>
-              <p className="text-sm font-semibold text-slate-800">{formatDaysAgo(stats?.lastUpdatedAt ?? null)}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-slate-50">
-            <MessageCircle className="h-4 w-4 text-slate-500" />
-            <div>
-              <p className="text-xs text-slate-500">Preguntas hoy</p>
-              <p className="text-sm font-semibold text-slate-800">
-                {usage?.count ?? 0} / {DAILY_LIMIT}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg px-3 py-2 bg-slate-50">
-            <BarChart3 className="h-4 w-4 text-slate-500" />
-            <div>
-              <p className="text-xs text-slate-500">Alta confianza</p>
-              <p className="text-sm font-semibold text-slate-800">
-                {usage?.count
-                  ? Math.round(((usage?.highConfidenceCount ?? 0) / usage.count) * 100)
-                  : 0}
-                %
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
 
       {voiceConversation ? (
         <div className="flex-1 flex flex-col items-center justify-center p-6 min-h-0">
@@ -546,7 +562,7 @@ export default function AprendizajePage() {
             className={cn(
               "w-40 h-40 rounded-full flex items-center justify-center transition-all duration-300",
               voiceState === "listening" && "animate-pulse",
-              voiceState === "speaking" && "animate-pulse"
+              voiceState === "speaking" && "animate-pulse",
             )}
             style={{
               backgroundColor:
@@ -557,7 +573,8 @@ export default function AprendizajePage() {
                     : voiceState === "thinking"
                       ? "var(--primarySoft)"
                       : "var(--primarySoft)",
-              transform: voiceState === "listening" ? "scale(1.05)" : "scale(1)",
+              transform:
+                voiceState === "listening" ? "scale(1.05)" : "scale(1)",
             }}
           >
             {voiceState === "idle" && (
@@ -584,7 +601,10 @@ export default function AprendizajePage() {
               </div>
             )}
             {voiceState === "thinking" && (
-              <Loader2 className="h-12 w-12 animate-spin" style={{ color: "var(--primaryColor)" }} />
+              <Loader2
+                className="h-12 w-12 animate-spin"
+                style={{ color: "var(--primaryColor)" }}
+              />
             )}
             {voiceState === "listening" && (
               <div className="flex gap-1 items-end">
@@ -604,24 +624,37 @@ export default function AprendizajePage() {
             </p>
           )}
           <p className="mt-6 text-sm text-slate-500 text-center max-w-xs">
-            {voiceState === "idle" && "Toca el micrófono para empezar. Habla y el asistente te responderá por voz."}
+            {voiceState === "idle" &&
+              "Toca el micrófono para empezar. Habla y el asistente te responderá por voz."}
             {voiceState === "greeting" && "Iniciando..."}
-            {voiceState === "listening" && (voiceTranscript ? `"${voiceTranscript}"` : "Escuchando... habla ahora.")}
+            {voiceState === "listening" &&
+              (voiceTranscript
+                ? `"${voiceTranscript}"`
+                : "Escuchando... habla ahora.")}
             {voiceState === "thinking" && "Pensando..."}
             {voiceState === "speaking" && "Respondiendo..."}
           </p>
           {lastExchange && (
             <div className="mt-4 w-full max-w-md text-center space-y-1">
-              <p className="text-xs text-slate-400 truncate" title={lastExchange.user}>
+              <p
+                className="text-xs text-slate-400 truncate"
+                title={lastExchange.user}
+              >
                 Tú: {lastExchange.user}
               </p>
-              <p className="text-xs text-slate-500 truncate" title={lastExchange.assistant}>
+              <p
+                className="text-xs text-slate-500 truncate"
+                title={lastExchange.assistant}
+              >
                 Asistente: {lastExchange.assistant}
               </p>
             </div>
           )}
           <div className="mt-6 flex flex-col items-center gap-3">
-            {(voiceState === "listening" || voiceState === "thinking" || voiceState === "speaking" || voiceState === "greeting") && (
+            {(voiceState === "listening" ||
+              voiceState === "thinking" ||
+              voiceState === "speaking" ||
+              voiceState === "greeting") && (
               <button
                 type="button"
                 onClick={stopVoiceConversation}
@@ -645,22 +678,39 @@ export default function AprendizajePage() {
           <div className="flex-1 flex min-h-0">
             {/* Columna izquierda: historial */}
             <aside className="w-64 shrink-0 border-r border-slate-200 bg-white/80 flex flex-col overflow-hidden">
-              <div className="p-3 border-b border-slate-100">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <div className="p-3 border-b border-slate-100 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMessages([]);
+                    setLastExchange(null);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:opacity-90"
+                  style={{
+                    backgroundColor: "var(--primarySoft)",
+                    color: "var(--primaryColor)",
+                  }}
+                >
+                  <MessageSquarePlus className="h-4 w-4" />
+                  Nueva conversación
+                </button>
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 pt-1">
                   Historial reciente
                 </h2>
               </div>
               <div className="flex-1 overflow-y-auto p-2">
                 {history.length === 0 ? (
-                  <p className="text-xs text-slate-400 p-3">Aún no hay preguntas</p>
+                  <p className="text-xs text-slate-400 p-3">
+                    Aún no hay preguntas
+                  </p>
                 ) : (
                   <ul className="space-y-1">
                     {history.slice(0, 20).map((item) => (
-                      <li key={item.id}>
+                      <li key={item.id} className="group relative">
                         <button
                           type="button"
                           onClick={() => openHistoryItem(item)}
-                          className="w-full text-left rounded-lg p-2.5 hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-colors"
+                          className="w-full text-left rounded-lg p-2.5 pr-8 hover:bg-slate-50 border border-transparent hover:border-slate-200 transition-colors"
                         >
                           <p className="text-[10px] text-slate-400">
                             {new Date(item.date).toLocaleDateString("es", {
@@ -670,7 +720,10 @@ export default function AprendizajePage() {
                               minute: "2-digit",
                             })}
                           </p>
-                          <p className="text-sm text-slate-700 truncate mt-0.5" title={item.query}>
+                          <p
+                            className="text-sm text-slate-700 truncate mt-0.5"
+                            title={item.query}
+                          >
                             {item.query}
                           </p>
                           <div className="flex items-center justify-between mt-1">
@@ -681,13 +734,23 @@ export default function AprendizajePage() {
                                   ? "text-emerald-600"
                                   : item.confidence === "medium"
                                     ? "text-amber-600"
-                                    : "text-slate-500"
+                                    : "text-slate-500",
                               )}
                             >
                               {confidencePct(item.confidence)}%
                             </span>
-                            <span className="text-[10px] text-slate-400">Reabrir</span>
+                            <span className="text-[10px] text-slate-400">
+                              Reabrir
+                            </span>
                           </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => deleteHistoryItem(e, item.id)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 size-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </li>
                     ))}
@@ -705,11 +768,17 @@ export default function AprendizajePage() {
                       className="size-20 rounded-2xl flex items-center justify-center mb-5 opacity-90"
                       style={{ backgroundColor: "var(--primarySoft)" }}
                     >
-                      <Sparkles className="h-10 w-10" style={{ color: "var(--primaryColor)" }} />
+                      <Sparkles
+                        className="h-10 w-10"
+                        style={{ color: "var(--primaryColor)" }}
+                      />
                     </div>
-                    <h3 className="text-xl font-semibold text-slate-800">¿Qué quieres saber hoy?</h3>
+                    <h3 className="text-xl font-semibold text-slate-800">
+                      ¿Qué quieres saber hoy?
+                    </h3>
                     <p className="text-slate-500 mt-1 mb-6 max-w-sm">
-                      Escribe o elige una sugerencia. La IA responde con tu base de conocimiento.
+                      Escribe o elige una sugerencia. La IA responde con tu base
+                      de conocimiento.
                     </p>
                     <div className="flex flex-wrap gap-2 justify-center">
                       {SUGGESTIONS.map((s) => (
@@ -717,7 +786,9 @@ export default function AprendizajePage() {
                           key={s}
                           type="button"
                           onClick={() => handleSubmit(undefined, s)}
-                          disabled={loading || (usage?.count ?? 0) >= DAILY_LIMIT}
+                          disabled={
+                            loading || (usage?.count ?? 0) >= DAILY_LIMIT
+                          }
                           className="px-4 py-2 rounded-full text-sm border border-slate-200 bg-white hover:bg-slate-50 hover:border-(--primaryColor) transition-colors"
                           style={{ color: "var(--primaryColor)" }}
                         >
@@ -731,16 +802,23 @@ export default function AprendizajePage() {
                 {messages.map((m, i) => (
                   <div
                     key={i}
-                    className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}
+                    className={cn(
+                      "flex",
+                      m.role === "user" ? "justify-end" : "justify-start",
+                    )}
                   >
                     <div
                       className={cn(
                         "max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm",
                         m.role === "user"
                           ? "text-white"
-                          : "bg-slate-50 text-slate-800 border border-slate-200/80"
+                          : "bg-slate-50 text-slate-800 border border-slate-200/80",
                       )}
-                      style={m.role === "user" ? { backgroundColor: "var(--primaryColor)" } : undefined}
+                      style={
+                        m.role === "user"
+                          ? { backgroundColor: "var(--primaryColor)" }
+                          : undefined
+                      }
                     >
                       <p className="whitespace-pre-wrap">{m.content}</p>
                       {m.role === "assistant" && (
@@ -770,14 +848,19 @@ export default function AprendizajePage() {
                             <p className="text-[10px] text-slate-500 mt-2 flex items-center gap-1">
                               <FileText className="h-3 w-3" />
                               {m.sources.slice(0, 2).join(", ")}
-                              {m.sources.length > 2 && ` +${m.sources.length - 2}`}
+                              {m.sources.length > 2 &&
+                                ` +${m.sources.length - 2}`}
                             </p>
                           )}
                           <div className="flex items-center gap-1 mt-3 flex-wrap">
                             <button
                               type="button"
                               onClick={() => playAudio(m.content, i)}
-                              disabled={ttsBusy || (playingId !== null && playingId !== i) || playingId === -1}
+                              disabled={
+                                ttsBusy ||
+                                (playingId !== null && playingId !== i) ||
+                                playingId === -1
+                              }
                               className="size-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors disabled:opacity-50"
                               title="Reproducir"
                             >
@@ -825,7 +908,9 @@ export default function AprendizajePage() {
                           />
                         ))}
                       </span>
-                      <span className="text-sm text-slate-600">IA pensando…</span>
+                      <span className="text-sm text-slate-600">
+                        IA pensando…
+                      </span>
                     </div>
                   </div>
                 )}
@@ -835,7 +920,9 @@ export default function AprendizajePage() {
               {/* Input avanzado */}
               <footer className="shrink-0 border-t border-slate-200 p-4 bg-slate-50/50">
                 {submitError && (
-                  <p className="text-sm text-red-600 mb-2 px-1">{submitError}</p>
+                  <p className="text-sm text-red-600 mb-2 px-1">
+                    {submitError}
+                  </p>
                 )}
                 <form
                   onSubmit={(e) => handleSubmit(e)}
@@ -847,29 +934,63 @@ export default function AprendizajePage() {
                     disabled={loading || (usage?.count ?? 0) >= DAILY_LIMIT}
                     className={cn(
                       "size-10 shrink-0 rounded-lg flex items-center justify-center transition-colors",
-                      isListening ? "bg-red-100 text-red-600" : "text-slate-500 hover:bg-slate-100"
+                      isListening
+                        ? "bg-red-100 text-red-600"
+                        : "text-slate-500 hover:bg-slate-100",
                     )}
                     title={isListening ? "Detener" : "Hablar"}
                   >
-                    <Mic className={cn("h-5 w-5", isListening && "animate-pulse")} />
+                    <Mic
+                      className={cn("h-5 w-5", isListening && "animate-pulse")}
+                    />
                   </button>
                   <input
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSubmit(e)}
+                    onKeyDown={(e) =>
+                      e.key === "Enter" && !e.shiftKey && handleSubmit(e)
+                    }
                     placeholder="Pregunta algo sobre tu negocio…"
                     className="flex-1 min-h-[44px] py-2 px-3 bg-transparent border-none text-slate-800 text-sm placeholder:text-slate-400 focus:outline-none"
-                    disabled={!tenantId || loading || (usage?.count ?? 0) >= DAILY_LIMIT}
+                    disabled={
+                      !tenantId || loading || (usage?.count ?? 0) >= DAILY_LIMIT
+                    }
                   />
                   <button
                     type="submit"
-                    disabled={!input.trim() || !tenantId || loading || (usage?.count ?? 0) >= DAILY_LIMIT}
+                    disabled={
+                      !input.trim() ||
+                      !tenantId ||
+                      loading ||
+                      (usage?.count ?? 0) >= DAILY_LIMIT
+                    }
                     className="size-10 shrink-0 rounded-lg flex items-center justify-center text-white disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
                     style={{ backgroundColor: "var(--primaryColor)" }}
                     title="Enviar"
                   >
-                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                    {loading ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Send className="h-5 w-5" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVoiceConversation((v) => !v)}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                      voiceConversation
+                        ? "text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                    )}
+                    style={
+                      voiceConversation
+                        ? { backgroundColor: "var(--primaryColor)" }
+                        : undefined
+                    }
+                  >
+                    <Speaker className="h-4 w-4" />
                   </button>
                 </form>
               </footer>

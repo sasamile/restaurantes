@@ -72,7 +72,7 @@ export function ChangeRoleModal({
   const [selectedRole, setSelectedRole] = React.useState<string>(currentRole);
   const [allowedPages, setAllowedPages] = React.useState<string[]>(
     defaultAllowed.length > 0
-      ? defaultAllowed.filter((k) => allPageKeys.includes(k))
+      ? defaultAllowed.filter((k) => (allPageKeys as readonly string[]).includes(k))
       : allPageKeys
   );
   const [saving, setSaving] = React.useState(false);
@@ -84,7 +84,7 @@ export function ChangeRoleModal({
       const keys = visiblePages.map((p) => p.key);
       const next =
         currentAllowedPages?.length
-          ? currentAllowedPages.filter((k) => keys.includes(k))
+          ? currentAllowedPages.filter((k) => (keys as readonly string[]).includes(k))
           : keys;
       setAllowedPages(next.length > 0 ? next : keys);
       setSuccess(false);

@@ -75,7 +75,7 @@ export function ManagePermissionsModal({
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              className="text-xs px-2 py-1.5"
               onClick={selectAll}
             >
               Todas
@@ -83,7 +83,7 @@ export function ManagePermissionsModal({
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              className="text-xs px-2 py-1.5"
               onClick={selectNone}
             >
               Ninguna

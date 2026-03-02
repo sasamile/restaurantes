@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { useMutation } from "convex/react";
@@ -30,9 +30,23 @@ const loginSchema = z.object({
 
 type LoginValues = z.infer<typeof loginSchema>;
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
-  const { login } = useAuth();
+  const searchParams = useSearchParams();
+  const { user, isLoading, login } = useAuth();
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!user) return;
+    const returnUrl = searchParams.get("redirect") ?? searchParams.get("returnUrl");
+    if (returnUrl && returnUrl.startsWith("/") && !returnUrl.startsWith("//")) {
+      router.replace(returnUrl);
+    } else if (user.isSuperadmin) {
+      router.replace("/superadmin");
+    } else {
+      router.replace("/tenants");
+    }
+  }, [user, isLoading, searchParams, router]);
   const authLogin = useMutation(api.auth.login);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -105,6 +119,14 @@ export default function LoginPage() {
       });
     }
   };
+
+  if (isLoading || user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-linear-to-b from-zinc-50 via-zinc-50 to-red-50">
+        <p className="text-slate-600">Cargando...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-linear-to-b from-zinc-50 via-zinc-50 to-red-50 px-4 py-10">
@@ -208,5 +230,19 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-linear-to-b from-zinc-50 via-zinc-50 to-red-50">
+          <p className="text-slate-600">Cargando...</p>
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }

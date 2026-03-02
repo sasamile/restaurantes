@@ -5,7 +5,7 @@ import { useRequireModule } from "@/lib/use-require-module";
 import { api } from "@/convex";
 import type { Id } from "@/convex";
 import { useTenant } from "@/lib/tenant-context";
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import {
   BookOpen,
   CloudUpload,
@@ -22,6 +22,13 @@ import {
   Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 const DEFAULT_PRIMARY = "#197fe6";
 const DEFAULT_SECONDARY = "#06b6d4";
@@ -30,6 +37,7 @@ const ACCEPTED_TYPES =
   ".txt,.md,.csv,.json,.pdf,.doc,.docx,text/plain,text/markdown,text/csv,application/json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword";
 
 const FILE_TYPES = [".txt", ".md", ".csv", ".json", ".pdf", ".doc", ".docx"];
+const INTRO_SEEN_KEY = "knowledge-intro-seen";
 
 export default function KnowledgePage() {
   useRequireModule("conocimiento");
@@ -42,7 +50,27 @@ export default function KnowledgePage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [showIntroModal, setShowIntroModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!tenantId || typeof window === "undefined") return;
+    const key = `${INTRO_SEEN_KEY}-${tenantId}`;
+    const seen = localStorage.getItem(key);
+    if (!seen) {
+      setShowIntroModal(true);
+    }
+  }, [tenantId]);
+
+  const closeIntroModal = useCallback(
+    (dontShowAgain?: boolean) => {
+      if (tenantId && typeof window !== "undefined" && dontShowAgain) {
+        localStorage.setItem(`${INTRO_SEEN_KEY}-${tenantId}`, "1");
+      }
+      setShowIntroModal(false);
+    },
+    [tenantId]
+  );
 
   const tenant = useQuery(
     api.tenants.get,
@@ -234,18 +262,98 @@ export default function KnowledgePage() {
                 responder automáticamente en WhatsApp.
               </p>
             </div>
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium w-fit"
-              style={{
-                backgroundColor: "var(--primarySoft)",
-                color: "var(--primaryColor)",
-              }}
-            >
-              <Zap className="h-3.5 w-3.5" />
-              RAG Activo
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowIntroModal(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium border border-border hover:bg-muted/50 transition-colors"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                ¿Cómo funciona?
+              </button>
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium w-fit"
+                style={{
+                  backgroundColor: "var(--primarySoft)",
+                  color: "var(--primaryColor)",
+                }}
+              >
+                <Zap className="h-3.5 w-3.5" />
+                RAG Activo
+              </span>
+            </div>
           </div>
         </header>
+
+        {/* Modal ¿Cómo funciona? - primera vez o al hacer clic */}
+        <Dialog open={showIntroModal} onOpenChange={(open) => !open && closeIntroModal()}>
+          <DialogContent className="max-w-md" style={{ ...cssVars } as React.CSSProperties}>
+            <DialogHeader>
+              <DialogTitle>¿Cómo funciona?</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="flex items-start gap-3">
+                <div
+                  className="shrink-0 size-10 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: "var(--primarySoft)", color: "var(--primaryColor)" }}
+                >
+                  <FileUp className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">1. Carga contenido</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Añade artículos manuales o sube archivos (.txt, .md, .pdf, etc.)
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div
+                  className="shrink-0 size-10 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: "var(--primarySoft)", color: "var(--primaryColor)" }}
+                >
+                  <Database className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">2. Se indexa automáticamente</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    RAG procesa y estructura tu información para búsquedas inteligentes
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div
+                  className="shrink-0 size-10 rounded-lg flex items-center justify-center"
+                  style={{ backgroundColor: "var(--primarySoft)", color: "var(--primaryColor)" }}
+                >
+                  <MessageCircle className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">3. El bot lo usa para responder</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Las conversaciones en WhatsApp se nutren de este conocimiento
+                  </p>
+                </div>
+              </div>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => closeIntroModal(true)}
+                className="w-full sm:w-auto rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors"
+                style={{ backgroundColor: primaryColor }}
+              >
+                Entendido
+              </button>
+              <button
+                type="button"
+                onClick={() => closeIntroModal()}
+                className="w-full sm:w-auto rounded-lg px-4 py-2 text-sm font-medium border border-input hover:bg-muted transition-colors"
+              >
+                Cerrar
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* ¿Cómo funciona? */}
         <section className="mb-8 rounded-xl border border-border/60 bg-white p-4 sm:p-5 shadow-sm">
