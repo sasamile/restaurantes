@@ -14,6 +14,10 @@ import {
   Bot,
   Mail,
   ChevronDown,
+  Calendar,
+  ShoppingBag,
+  Headphones,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KPICard } from "@/components/dashboard/kpi-card";
@@ -69,6 +73,12 @@ export default function TenantsPage() {
   const primaryColor = tenant?.primaryColor ?? DEFAULT_PRIMARY;
   const secondaryColor = tenant?.secondaryColor ?? DEFAULT_SECONDARY;
   const ycloudConnected = ycloud?.connected ?? false;
+
+  const modules = tenant?.enabledModules ?? {};
+  const hasReservas = modules.reservas !== false;
+  const hasPedidos = modules.pedidos !== false;
+  const hasPqr = modules.pqr !== false;
+  const hasConocimiento = modules.conocimiento !== false;
 
   const greeting =
     new Date().getHours() < 12
@@ -242,6 +252,84 @@ export default function TenantsPage() {
         {!ycloudConnected && (
           <section className="mb-10">
             <IntegrationBanner primaryColor={primaryColor} />
+          </section>
+        )}
+
+        {(hasReservas || hasPedidos || hasPqr || hasConocimiento) && (
+          <section className="mb-10">
+            <h2 className="mb-4 text-base font-semibold text-slate-900">
+              Módulos activos
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {hasReservas && (
+                <Link
+                  href="/tenants/reservas"
+                  className="flex items-center gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md"
+                >
+                  <div
+                    className="flex size-12 shrink-0 items-center justify-center rounded-xl text-white"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <Calendar className="size-6" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-900">Reservas</p>
+                    <p className="text-sm text-slate-500">Ver calendario y reservas</p>
+                  </div>
+                </Link>
+              )}
+              {hasPedidos && (
+                <Link
+                  href="/tenants/solicitudes"
+                  className="flex items-center gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md"
+                >
+                  <div
+                    className="flex size-12 shrink-0 items-center justify-center rounded-xl text-white"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <ShoppingBag className="size-6" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-900">Pedidos</p>
+                    <p className="text-sm text-slate-500">Gestionar solicitudes</p>
+                  </div>
+                </Link>
+              )}
+              {hasPqr && (
+                <Link
+                  href="/tenants/pqrs"
+                  className="flex items-center gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md"
+                >
+                  <div
+                    className="flex size-12 shrink-0 items-center justify-center rounded-xl text-white"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <Headphones className="size-6" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-900">PQRs</p>
+                    <p className="text-sm text-slate-500">Quejas y reclamos</p>
+                  </div>
+                </Link>
+              )}
+              {hasConocimiento && (
+                <Link
+                  href="/tenants/knowledge"
+                  className="flex items-center gap-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md"
+                >
+                  <div
+                    className="flex size-12 shrink-0 items-center justify-center rounded-xl text-white"
+                    style={{ backgroundColor: primaryColor }}
+                  >
+                    <BookOpen className="size-6" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-slate-900">Conocimiento</p>
+                    <p className="text-sm text-slate-500">Base de conocimiento</p>
+                  </div>
+                </Link>
+              )}
+            </div>
           </section>
         )}
 

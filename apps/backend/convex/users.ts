@@ -103,6 +103,7 @@ export const inviteToTenant = mutation({
     tenantId: v.id("tenants"),
     userId: v.id("users"),
     role: roleValidator,
+    allowedPages: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db
@@ -117,8 +118,37 @@ export const inviteToTenant = mutation({
       userId: args.userId,
       tenantId: args.tenantId,
       role: args.role,
+      allowedPages: args.allowedPages,
       createdAt: now,
     });
+  },
+});
+
+/** Actualizar permisos (páginas visibles) de un usuario en el tenant */
+export const updatePermissions = mutation({
+  args: {
+    userTenantId: v.id("userTenants"),
+    allowedPages: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.userTenantId, { allowedPages: args.allowedPages });
+    return args.userTenantId;
+  },
+});
+
+/** Obtener membership de un usuario en un tenant */
+export const getMembershipByTenantAndUser = query({
+  args: {
+    tenantId: v.id("tenants"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("userTenants")
+      .withIndex("by_user_tenant", (q) =>
+        q.eq("userId", args.userId).eq("tenantId", args.tenantId)
+      )
+      .unique();
   },
 });
 

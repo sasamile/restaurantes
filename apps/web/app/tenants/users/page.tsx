@@ -32,6 +32,7 @@ type Member = {
   userId: Id<"users">;
   tenantId: Id<"tenants">;
   role: string;
+  allowedPages?: string[];
   createdAt: number;
   user: { name: string; email: string } | null;
 };
@@ -58,6 +59,7 @@ export default function UsersPage() {
   const createUser = useMutation(api.users.create);
   const inviteToTenant = useMutation(api.users.inviteToTenant);
   const updateRole = useMutation(api.users.updateRole);
+  const updatePermissions = useMutation(api.users.updatePermissions);
   const removeFromTenant = useMutation(api.users.removeFromTenant);
 
   const primaryColor = tenant?.primaryColor ?? DEFAULT_PRIMARY;
@@ -104,13 +106,15 @@ export default function UsersPage() {
 
   const handleSaveRole = async (
     userTenantId: Id<"userTenants">,
-    role: "OWNER" | "ADMIN" | "AGENT" | "VIEWER"
+    role: "OWNER" | "ADMIN" | "AGENT" | "VIEWER",
+    allowedPages: string[]
   ) => {
     try {
       await updateRole({ userTenantId, role });
+      await updatePermissions({ userTenantId, allowedPages });
       sileo.success({
-        title: "Rol actualizado",
-        description: "Los cambios se guardaron correctamente.",
+        title: "Usuario actualizado",
+        description: "Rol y permisos guardados correctamente.",
       });
       setChangeRoleMember(null);
     } catch (err) {
@@ -130,7 +134,12 @@ export default function UsersPage() {
         email: data.email.trim(),
         password: data.password,
       });
-      await inviteToTenant({ tenantId, userId, role: data.role });
+      await inviteToTenant({
+        tenantId,
+        userId,
+        role: data.role,
+        allowedPages: data.allowedPages,
+      });
       sileo.success({
         title: "Usuario creado",
         description: "El usuario fue creado y tiene acceso a este restaurante.",
@@ -329,6 +338,7 @@ export default function UsersPage() {
         open={inviteOpen}
         onOpenChange={setInviteOpen}
         primaryColor={primaryColor}
+        enabledModules={tenant?.enabledModules}
         onCreateUser={handleCreateUser}
       />
 
@@ -338,6 +348,8 @@ export default function UsersPage() {
           onOpenChange={(open) => !open && setChangeRoleMember(null)}
           userName={changeRoleMember.user?.name ?? "Usuario"}
           currentRole={changeRoleMember.role}
+          currentAllowedPages={changeRoleMember.allowedPages}
+          enabledModules={tenant?.enabledModules}
           userTenantId={changeRoleMember._id}
           primaryColor={primaryColor}
           onSave={handleSaveRole}

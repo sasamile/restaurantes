@@ -5,6 +5,39 @@ import { supportAgent } from "./ai/agents/supportAgent";
 import { saveMessage } from "@convex-dev/agent";
 import { components } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
+
+async function upsertCustomer(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  externalContactId: string,
+  customerName: string,
+  now: number
+) {
+  const existing = await ctx.db
+    .query("customers")
+    .withIndex("by_tenant_contact", (q) =>
+      q.eq("tenantId", tenantId).eq("externalContactId", externalContactId)
+    )
+    .unique();
+
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      name: customerName.trim() || existing.name,
+      lastContactAt: now,
+      updatedAt: now,
+    });
+    return;
+  }
+  await ctx.db.insert("customers", {
+    tenantId,
+    externalContactId,
+    name: customerName.trim() || "Cliente",
+    lastContactAt: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
 
 /** Escalar conversación a agente humano (status = pending) */
 export const escalate = internalMutation({
@@ -105,6 +138,7 @@ export const getOrCreateForAgent = internalMutation({
           updatedAt: now,
           customerName: args.customerName,
         });
+        await upsertCustomer(ctx, args.tenantId, args.externalContactId, args.customerName, now);
         return { conversationId: existing._id, threadId: existing.threadId };
       }
 
@@ -120,6 +154,7 @@ export const getOrCreateForAgent = internalMutation({
         customerName: args.customerName,
         status: "open",
       });
+      await upsertCustomer(ctx, args.tenantId, args.externalContactId, args.customerName, now);
 
       const greetMessage =
         "¡Hola! Soy el asistente virtual del restaurante. ¿En qué puedo ayudarte hoy? ✨";
@@ -154,6 +189,7 @@ export const getOrCreateForAgent = internalMutation({
       createdAt: now,
       updatedAt: now,
     });
+    await upsertCustomer(ctx, args.tenantId, args.externalContactId, args.customerName, now);
 
     return { conversationId, threadId };
   },

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useTenant } from "@/lib/tenant-context";
 import { useQuery } from "convex/react";
@@ -15,16 +15,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { Id } from "@/convex";
 
 interface TenantsShellProps {
   children: ReactNode;
 }
 
-const DEFAULT_PRIMARY = "#197fe6";
-const DEFAULT_SECONDARY = "#06b6d4";
+/** Colores neutros solo mientras carga; luego se usan los del tenant */
+const LOADING_PRIMARY = "#64748b";
+const LOADING_SECONDARY = "#94a3b8";
 
 interface NavEntry {
   href: string;
+  pageKey: string;
   icon: string;
   label: string;
   group: string;
@@ -53,11 +57,33 @@ export function TenantsShell({ children }: TenantsShellProps) {
     api.conversations.countNeedingAttention,
     tenantId && ycloud?.connected ? { tenantId } : "skip"
   );
+  const membership = useQuery(
+    api.users.getMembershipByTenantAndUser,
+    tenantId && user?._id ? { tenantId, userId: user._id as Id<"users"> } : "skip"
+  );
 
   const baseHref = "/tenants";
+
+  // Solo mostrar loading en la carga inicial. Cuando actualiza/revalida, no volver a mostrar skeleton
+  const hasLoadedTenantRef = useRef(false);
+  const prevTenantIdRef = useRef<string | null>(null);
+  const lastTenantRef = useRef<typeof tenant>(null);
+  if (prevTenantIdRef.current !== tenantId) {
+    prevTenantIdRef.current = tenantId ?? null;
+    hasLoadedTenantRef.current = false;
+    lastTenantRef.current = null;
+  }
+  if (tenant && tenantId) {
+    hasLoadedTenantRef.current = true;
+    lastTenantRef.current = tenant;
+  }
+  const isLoading = tenantId && tenant === undefined && !hasLoadedTenantRef.current;
+  // Usar último tenant conocido durante revalidaciones para evitar parpadeos
+  const displayTenant = tenant ?? (hasLoadedTenantRef.current ? lastTenantRef.current : null);
+
   const ycloudConnected = ycloud?.connected ?? false;
-  const primaryColor = tenant?.primaryColor ?? DEFAULT_PRIMARY;
-  const secondaryColor = tenant?.secondaryColor ?? DEFAULT_SECONDARY;
+  const primaryColor = isLoading ? LOADING_PRIMARY : (displayTenant?.primaryColor ?? LOADING_PRIMARY);
+  const secondaryColor = isLoading ? LOADING_SECONDARY : (displayTenant?.secondaryColor ?? LOADING_SECONDARY);
 
   const cssVars = useMemo(
     () =>
@@ -75,14 +101,22 @@ export function TenantsShell({ children }: TenantsShellProps) {
   const isActive = (href: string) =>
     pathname === href || (href !== "/tenants" && pathname.startsWith(href));
 
-  const modules = tenant?.enabledModules;
+  const modules = displayTenant?.enabledModules;
   const hasModule = (key: "pqr" | "pedidos" | "reservas" | "conocimiento") =>
     modules?.[key] !== false;
 
+  const allowedPages = membership?.allowedPages;
+  const hasPageAccess = (pageKey: string) => {
+    // undefined o vacío = todas las páginas (retrocompatible)
+    if (!allowedPages || allowedPages.length === 0) return true;
+    return allowedPages.includes(pageKey);
+  };
+
   const navEntries: NavEntry[] = [
-    { href: "/tenants", icon: "dashboard", label: "Dashboard", group: "General" },
+    { href: "/tenants", pageKey: "dashboard", icon: "dashboard", label: "Dashboard", group: "General" },
     {
       href: `${baseHref}/inbox`,
+      pageKey: "inbox",
       icon: "mail",
       label: "Inbox",
       group: "General",
@@ -91,6 +125,7 @@ export function TenantsShell({ children }: TenantsShellProps) {
     },
     {
       href: `${baseHref}/knowledge`,
+      pageKey: "knowledge",
       icon: "menu_book",
       label: "Conocimiento",
       group: "Conocimiento",
@@ -98,6 +133,7 @@ export function TenantsShell({ children }: TenantsShellProps) {
     },
     {
       href: `${baseHref}/aprendizaje`,
+      pageKey: "aprendizaje",
       icon: "school",
       label: "Aprendizaje",
       group: "Conocimiento",
@@ -105,6 +141,7 @@ export function TenantsShell({ children }: TenantsShellProps) {
     },
     {
       href: `${baseHref}/reservas`,
+      pageKey: "reservas",
       icon: "event",
       label: "Reservas",
       group: "General",
@@ -112,6 +149,7 @@ export function TenantsShell({ children }: TenantsShellProps) {
     },
     {
       href: `${baseHref}/solicitudes`,
+      pageKey: "pedidos",
       icon: "local_shipping",
       label: "Pedidos",
       group: "General",
@@ -119,22 +157,32 @@ export function TenantsShell({ children }: TenantsShellProps) {
     },
     {
       href: `${baseHref}/pqrs`,
+      pageKey: "pqrs",
       icon: "support_agent",
       label: "PQRs",
       group: "General",
       module: "pqr" as const,
     },
     {
+      href: `${baseHref}/clientes`,
+      pageKey: "clientes",
+      icon: "person",
+      label: "Clientes",
+      group: "General",
+    },
+    {
       href: `${baseHref}/integraciones`,
+      pageKey: "integraciones",
       icon: "link",
       label: "Integraciones",
       group: "Integraciones",
     },
-    { href: `${baseHref}/users`, icon: "group", label: "Usuarios", group: "Usuarios" },
+    { href: `${baseHref}/users`, pageKey: "users", icon: "group", label: "Usuarios", group: "Usuarios" },
   ].filter((e) => {
     if (!tenantId && e.group !== "General") return false;
     const m = e.module as "pqr" | "pedidos" | "reservas" | "conocimiento" | undefined;
     if (m && !hasModule(m)) return false;
+    if (!hasPageAccess(e.pageKey)) return false;
     return true;
   });
 
@@ -159,14 +207,18 @@ export function TenantsShell({ children }: TenantsShellProps) {
           <Link
             href="/tenants"
             className="size-11 rounded-xl flex items-center justify-center shrink-0 overflow-hidden transition-transform duration-150 hover:scale-105 active:scale-95 bg-slate-100"
-            style={{
-              backgroundColor: tenant?.logoUrl ? "transparent" : "var(--primaryColor)",
-            }}
+            style={
+              isLoading
+                ? undefined
+                : { backgroundColor: displayTenant?.logoUrl ? "transparent" : "var(--primaryColor)" }
+            }
           >
-            {tenant?.logoUrl ? (
+            {isLoading ? (
+              <span className="material-symbols-outlined text-2xl text-slate-400">restaurant</span>
+            ) : displayTenant?.logoUrl ? (
               <img
-                src={tenant.logoUrl}
-                alt={tenant?.name ?? "Logo"}
+                src={displayTenant.logoUrl}
+                alt={displayTenant?.name ?? "Logo"}
                 className="size-full object-contain p-1 rounded-xl"
               />
             ) : (
@@ -176,16 +228,24 @@ export function TenantsShell({ children }: TenantsShellProps) {
           {!collapsed && (
             <div className="flex-1 min-w-0 animate-in fade-in slide-in-from-left-2 duration-200">
               <h1 className="text-sm uppercase font-semibold text-slate-800 truncate">
-                {tenant?.name ?? "Selecciona un restaurante"}
+                {isLoading ? "Cargando…" : (displayTenant?.name ?? "Selecciona un restaurante")}
               </h1>
-            
             </div>
           )}
         </div>
 
-        {/* Middle: Navegación - iconos siempre, texto solo si expandido */}
+        {/* Middle: Navegación - NO mostrar links mientras carga */}
         <nav className="flex-1 overflow-y-auto py-4 min-h-0 px-3">
-          {collapsed ? (
+          {isLoading ? (
+            <div className="flex flex-col gap-3 px-2">
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-8 w-3/4 rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+            </div>
+          ) : collapsed ? (
             <div className="flex flex-col gap-0.5 items-center">
               {navEntries.map((entry) => {
                 const active = !entry.disabled && isActive(entry.href);
@@ -318,12 +378,20 @@ export function TenantsShell({ children }: TenantsShellProps) {
                 `}
               >
                 <div
-                  className="size-10 rounded-full flex items-center justify-center text-white shrink-0 overflow-hidden"
-                  style={{
-                    background: `linear-gradient(135deg, var(--primaryColor) 0%, var(--primaryLight) 100%)`,
-                  }}
+                  className={`size-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${
+                    isLoading ? "bg-slate-200" : ""
+                  }`}
+                  style={
+                    isLoading
+                      ? undefined
+                      : {
+                          background: `linear-gradient(135deg, var(--primaryColor) 0%, var(--primaryLight) 100%)`,
+                        }
+                  }
                 >
-                  <span className="material-symbols-outlined text-xl text-white">person</span>
+                  <span className={`material-symbols-outlined text-xl ${isLoading ? "text-slate-500" : "text-white"}`}>
+                    person
+                  </span>
                 </div>
                 {!collapsed && (
                   <div className="flex-1 text-left min-w-0 animate-in fade-in duration-200">
@@ -370,10 +438,34 @@ export function TenantsShell({ children }: TenantsShellProps) {
 
       {/* Main - área de contenido */}
       <main className="flex-1 m-3 flex flex-col overflow-hidden min-w-0">
-   
-
         <div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-white rounded-2xl">
-          {children}
+          {isLoading ? (
+            <div className="flex flex-1 flex-col overflow-y-auto p-6 sm:p-8 md:p-10">
+              <div className="mx-auto w-full max-w-6xl space-y-8">
+                <div className="space-y-3">
+                  <Skeleton className="h-8 w-64" />
+                  <Skeleton className="h-4 w-96" />
+                </div>
+                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <Skeleton key={i} className="h-28 rounded-2xl" />
+                  ))}
+                </div>
+                <div className="grid gap-8 lg:grid-cols-3">
+                  <div className="space-y-4 lg:col-span-2">
+                    <Skeleton className="h-48 rounded-2xl" />
+                    <Skeleton className="h-36 rounded-2xl" />
+                  </div>
+                  <div className="space-y-4">
+                    <Skeleton className="h-32 rounded-2xl" />
+                    <Skeleton className="h-48 rounded-2xl" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            children
+          )}
         </div>
       </main>
     </div>

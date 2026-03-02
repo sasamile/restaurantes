@@ -16,6 +16,7 @@ import { createPQR } from "./ai/tools/createPQR";
 import { createOrder } from "./ai/tools/createOrder";
 import { updateOrder } from "./ai/tools/updateOrder";
 import { cancelOrder } from "./ai/tools/cancelOrder";
+import { updateCustomerInfo } from "./ai/tools/updateCustomerInfo";
 import type { PaginationResult } from "convex/server";
 import type { MessageDoc } from "@convex-dev/agent";
 import { Id } from "../_generated/dataModel";
@@ -143,12 +144,29 @@ NO ofrezcas NUNCA servicios que no estén en la lista.
         const tenantPrompt = await ctx.runQuery(api.prompts.getDefault, {
           tenantId: args.tenantId,
         });
+        const customer = await ctx.runQuery(api.customers.getByTenantAndContact, {
+          tenantId: args.tenantId,
+          externalContactId: args.contactId,
+        });
+        const customerContext =
+          customer && (customer.notes || customer.email || customer.preferences)
+            ? `[INFORMACIÓN DEL CLIENTE - usa esto para personalizar]
+Nombre: ${customer.name}
+${customer.email ? `Email: ${customer.email}` : ""}
+${customer.notes ? `Notas: ${customer.notes}` : ""}
+${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
+[Fin INFORMACIÓN DEL CLIENTE]\n\n`
+            : customer
+              ? `[CLIENTE: ${customer.name}]\n\n`
+              : "";
+
         const now = new Date();
         const today = now.toISOString().slice(0, 10);
         const timeHint = now.toTimeString().slice(0, 5);
         const dateTimeContext = `[Fecha y hora actual para interpretar "hoy" o "mañana": ${today}, aprox. ${timeHint}. Usa esta fecha cuando el cliente diga "hoy" o "para hoy.]\n\n`;
         const promptWithContext =
           modulesContext +
+          customerContext +
           dateTimeContext +
           (tenantPrompt?.prompt?.trim()
             ? `[Contexto del restaurante - prioriza esto:]\n${tenantPrompt.prompt}\n\n[Cliente dice:]\n${args.text}`
@@ -156,6 +174,7 @@ NO ofrezcas NUNCA servicios que no estén en la lista.
 
         const tools: Record<string, unknown> = {
           searchTool: search,
+          updateCustomerInfoTool: updateCustomerInfo,
           escalateConversationTool: escalateConversation,
           setPriorityTool: setPriority,
           resolveConversationTool: resolveConversation,

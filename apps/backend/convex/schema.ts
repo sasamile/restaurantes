@@ -44,7 +44,7 @@ export default defineSchema({
   })
     .index("by_email", ["email"]),
 
-  // Relación usuario ↔ restaurante + rol
+  // Relación usuario ↔ restaurante + rol + permisos por página
   userTenants: defineTable({
     userId: v.id("users"),
     tenantId: v.id("tenants"),
@@ -54,6 +54,8 @@ export default defineSchema({
       v.literal("AGENT"),
       v.literal("VIEWER")
     ),
+    /** Páginas que puede ver. undefined = todas según rol. [] = ninguna. */
+    allowedPages: v.optional(v.array(v.string())),
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
@@ -362,6 +364,21 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_tenant", ["tenantId"]),
+
+  // Clientes (por tenant + teléfono); se alimenta de conversaciones y se usa en la IA
+  customers: defineTable({
+    tenantId: v.id("tenants"),
+    externalContactId: v.string(), // ej. whatsapp:+573001234567
+    name: v.string(),
+    email: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    preferences: v.optional(v.string()), // preferencias alimenticias, etc.
+    lastContactAt: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_tenant", ["tenantId"])
+    .index("by_tenant_contact", ["tenantId", "externalContactId"]),
 
   // Uso diario del Centro de Aprendizaje (límite 2000 créditos/día por tenant)
   learningUsage: defineTable({

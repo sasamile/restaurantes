@@ -12,6 +12,7 @@ import type * as activityLog from "../activityLog.js";
 import type * as auth from "../auth.js";
 import type * as chatEmpresa from "../chatEmpresa.js";
 import type * as conversations from "../conversations.js";
+import type * as customers from "../customers.js";
 import type * as dashboard from "../dashboard.js";
 import type * as elevenlabs from "../elevenlabs.js";
 import type * as googleCalendar from "../googleCalendar.js";
@@ -43,6 +44,7 @@ import type * as system_ai_tools_createReservation from "../system/ai/tools/crea
 import type * as system_ai_tools_resolveConversation from "../system/ai/tools/resolveConversation.js";
 import type * as system_ai_tools_search from "../system/ai/tools/search.js";
 import type * as system_ai_tools_setPriority from "../system/ai/tools/setPriority.js";
+import type * as system_ai_tools_updateCustomerInfo from "../system/ai/tools/updateCustomerInfo.js";
 import type * as system_ai_tools_updateOrder from "../system/ai/tools/updateOrder.js";
 import type * as system_conversations from "../system/conversations.js";
 import type * as system_googleCalendarSync from "../system/googleCalendarSync.js";
@@ -65,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   chatEmpresa: typeof chatEmpresa;
   conversations: typeof conversations;
+  customers: typeof customers;
   dashboard: typeof dashboard;
   elevenlabs: typeof elevenlabs;
   googleCalendar: typeof googleCalendar;
@@ -96,6 +99,7 @@ declare const fullApi: ApiFromModules<{
   "system/ai/tools/resolveConversation": typeof system_ai_tools_resolveConversation;
   "system/ai/tools/search": typeof system_ai_tools_search;
   "system/ai/tools/setPriority": typeof system_ai_tools_setPriority;
+  "system/ai/tools/updateCustomerInfo": typeof system_ai_tools_updateCustomerInfo;
   "system/ai/tools/updateOrder": typeof system_ai_tools_updateOrder;
   "system/conversations": typeof system_conversations;
   "system/googleCalendarSync": typeof system_googleCalendarSync;
