@@ -50,6 +50,10 @@ export const createOrder = createTool({
     if (!conversation) return "Conversación no encontrada.";
 
     const tenantId = conversation.tenantId;
+    const tenant = await ctx.runQuery(api.tenants.get, { tenantId });
+    if (tenant?.enabledModules?.pedidos === false) {
+      return "Este restaurante no tiene habilitado el módulo de pedidos por WhatsApp. No puedo tomar tu pedido por este canal. Por favor contacta directamente al restaurante.";
+    }
     const conversationId = conversation._id;
     const validItems = args.items.filter((i) => (i.product ?? "").trim());
     if (validItems.length === 0) return "Indica al menos un producto con cantidad para el pedido.";

@@ -43,6 +43,10 @@ export const createPQR = createTool({
     if (!conversation) return "Conversación no encontrada.";
 
     const tenantId = conversation.tenantId;
+    const tenant = await ctx.runQuery(api.tenants.get, { tenantId });
+    if (tenant?.enabledModules?.pqr === false) {
+      return "Este restaurante no tiene habilitado el módulo de PQR (Peticiones, Quejas, Reclamos). No puedo registrar tu solicitud por este canal. Por favor contacta directamente al restaurante.";
+    }
     const customerName = args.customerName.trim();
     const subject = args.subject.trim();
     const description = args.description.trim();

@@ -116,6 +116,30 @@ export const processInboundMessage = internalAction({
         isBotMode;
 
       if (shouldTriggerAgent) {
+        const tenant = await ctx.runQuery(api.tenants.get, {
+          tenantId: args.tenantId,
+        });
+        const modules = tenant?.enabledModules ?? {};
+        const hasReservas = modules.reservas !== false;
+        const hasPedidos = modules.pedidos !== false;
+        const hasPqr = modules.pqr !== false;
+
+        const enabledList: string[] = [];
+        if (hasReservas) enabledList.push("reservas");
+        if (hasPedidos) enabledList.push("pedidos");
+        if (hasPqr) enabledList.push("PQR (quejas/reclamos)");
+
+        const modulesContext = enabledList.length > 0
+          ? `[MÓDULOS HABILITADOS - OBLIGATORIO]
+Este restaurante SOLO tiene habilitados: ${enabledList.join(", ")}. También puedes buscar en la base de conocimiento (menú, horarios, etc.).
+NO ofrezcas NUNCA servicios que no estén en la lista.
+- Si el cliente pide RESERVA y reservas NO está habilitado → responde: "Lo sentimos, este restaurante no ofrece reservas por WhatsApp. Te recomendamos contactar directamente al restaurante."
+- Si el cliente pide PEDIDO y pedidos NO está habilitado → responde: "Lo sentimos, no tomamos pedidos por este canal. Te recomendamos contactar directamente al restaurante."
+- Si el cliente pide QUEJA/RECLAMO/PQR y PQR NO está habilitado → responde: "Lo sentimos, no podemos recibir quejas o reclamos por este canal. Te recomendamos contactar directamente al restaurante."
+
+[Fin MÓDULOS HABILITADOS]\n\n`
+          : "";
+
         const tenantPrompt = await ctx.runQuery(api.prompts.getDefault, {
           tenantId: args.tenantId,
         });
@@ -124,24 +148,29 @@ export const processInboundMessage = internalAction({
         const timeHint = now.toTimeString().slice(0, 5);
         const dateTimeContext = `[Fecha y hora actual para interpretar "hoy" o "mañana": ${today}, aprox. ${timeHint}. Usa esta fecha cuando el cliente diga "hoy" o "para hoy.]\n\n`;
         const promptWithContext =
+          modulesContext +
           dateTimeContext +
           (tenantPrompt?.prompt?.trim()
             ? `[Contexto del restaurante - prioriza esto:]\n${tenantPrompt.prompt}\n\n[Cliente dice:]\n${args.text}`
             : `[Cliente dice:]\n${args.text}`);
 
+        const tools: Record<string, unknown> = {
+          searchTool: search,
+          escalateConversationTool: escalateConversation,
+          setPriorityTool: setPriority,
+          resolveConversationTool: resolveConversation,
+        };
+        if (hasReservas) tools.createReservationTool = createReservation;
+        if (hasPedidos) {
+          tools.createOrderTool = createOrder;
+          tools.updateOrderTool = updateOrder;
+          tools.cancelOrderTool = cancelOrder;
+        }
+        if (hasPqr) tools.createPQRTool = createPQR;
+
         await supportAgent.generateText(ctx, { threadId }, {
           prompt: promptWithContext,
-          tools: {
-            searchTool: search,
-            createReservationTool: createReservation,
-            createOrderTool: createOrder,
-            updateOrderTool: updateOrder,
-            cancelOrderTool: cancelOrder,
-            createPQRTool: createPQR,
-            escalateConversationTool: escalateConversation,
-            setPriorityTool: setPriority,
-            resolveConversationTool: resolveConversation,
-          },
+          tools: tools as Parameters<typeof supportAgent.generateText>[2]["tools"],
         });
 
         if (args.channel === "whatsapp") {

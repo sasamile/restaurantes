@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery, useMutation } from "convex/react";
+import { useRequireModule } from "@/lib/use-require-module";
 import { api } from "@/convex";
 import type { Id } from "@/convex";
 import { useTenant } from "@/lib/tenant-context";
@@ -31,6 +32,7 @@ const ACCEPTED_TYPES =
 const FILE_TYPES = [".txt", ".md", ".csv", ".json", ".pdf", ".doc", ".docx"];
 
 export default function KnowledgePage() {
+  useRequireModule("conocimiento");
   const { tenantId } = useTenant();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");

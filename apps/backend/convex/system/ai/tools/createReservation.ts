@@ -41,6 +41,13 @@ export const createReservation = createTool({
     );
     if (!conversation) return "Conversación no encontrada.";
 
+    const tenant = await ctx.runQuery(api.tenants.get, {
+      tenantId: conversation.tenantId,
+    });
+    if (tenant?.enabledModules?.reservas === false) {
+      return "Este restaurante no tiene habilitado el módulo de reservas. No puedo crear reservas por este canal. Por favor contacta directamente al restaurante.";
+    }
+
     const tenantId = conversation.tenantId;
     const conversationId = conversation._id;
 

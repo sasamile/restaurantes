@@ -10,14 +10,18 @@
 
 import type * as activityLog from "../activityLog.js";
 import type * as auth from "../auth.js";
+import type * as chatEmpresa from "../chatEmpresa.js";
 import type * as conversations from "../conversations.js";
 import type * as dashboard from "../dashboard.js";
+import type * as elevenlabs from "../elevenlabs.js";
 import type * as googleCalendar from "../googleCalendar.js";
 import type * as googleCalendarImport from "../googleCalendarImport.js";
 import type * as http from "../http.js";
+import type * as improveMessage from "../improveMessage.js";
 import type * as integrations from "../integrations.js";
 import type * as knowledge from "../knowledge.js";
 import type * as knowledgeFileParsing from "../knowledgeFileParsing.js";
+import type * as learning from "../learning.js";
 import type * as messages from "../messages.js";
 import type * as occupancy from "../occupancy.js";
 import type * as plans from "../plans.js";
@@ -59,14 +63,18 @@ import type {
 declare const fullApi: ApiFromModules<{
   activityLog: typeof activityLog;
   auth: typeof auth;
+  chatEmpresa: typeof chatEmpresa;
   conversations: typeof conversations;
   dashboard: typeof dashboard;
+  elevenlabs: typeof elevenlabs;
   googleCalendar: typeof googleCalendar;
   googleCalendarImport: typeof googleCalendarImport;
   http: typeof http;
+  improveMessage: typeof improveMessage;
   integrations: typeof integrations;
   knowledge: typeof knowledge;
   knowledgeFileParsing: typeof knowledgeFileParsing;
+  learning: typeof learning;
   messages: typeof messages;
   occupancy: typeof occupancy;
   plans: typeof plans;

@@ -21,6 +21,23 @@ export const get = query({
   },
 });
 
+/** Estadísticas para el Centro de Aprendizaje: documentos y última actualización. */
+export const getStats = query({
+  args: { tenantId: v.id("tenants") },
+  handler: async (ctx, args) => {
+    const items = await ctx.db
+      .query("knowledgeItems")
+      .withIndex("by_tenant", (q) => q.eq("tenantId", args.tenantId))
+      .collect();
+    const lastUpdatedAt =
+      items.length > 0 ? Math.max(...items.map((i) => i.updatedAt)) : null;
+    return {
+      documentCount: items.length,
+      lastUpdatedAt,
+    };
+  },
+});
+
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {

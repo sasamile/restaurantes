@@ -30,6 +30,8 @@ interface NavEntry {
   group: string;
   disabled?: boolean;
   disabledTitle?: string;
+  /** Requiere este módulo habilitado. undefined = siempre visible */
+  module?: "pqr" | "pedidos" | "reservas" | "conocimiento";
 }
 
 export function TenantsShell({ children }: TenantsShellProps) {
@@ -73,6 +75,10 @@ export function TenantsShell({ children }: TenantsShellProps) {
   const isActive = (href: string) =>
     pathname === href || (href !== "/tenants" && pathname.startsWith(href));
 
+  const modules = tenant?.enabledModules;
+  const hasModule = (key: "pqr" | "pedidos" | "reservas" | "conocimiento") =>
+    modules?.[key] !== false;
+
   const navEntries: NavEntry[] = [
     { href: "/tenants", icon: "dashboard", label: "Dashboard", group: "General" },
     {
@@ -88,24 +94,35 @@ export function TenantsShell({ children }: TenantsShellProps) {
       icon: "menu_book",
       label: "Conocimiento",
       group: "Conocimiento",
+      module: "conocimiento" as const,
+    },
+    {
+      href: `${baseHref}/aprendizaje`,
+      icon: "school",
+      label: "Aprendizaje",
+      group: "Conocimiento",
+      module: "conocimiento" as const,
     },
     {
       href: `${baseHref}/reservas`,
       icon: "event",
       label: "Reservas",
       group: "General",
+      module: "reservas" as const,
     },
     {
       href: `${baseHref}/solicitudes`,
       icon: "local_shipping",
       label: "Pedidos",
       group: "General",
+      module: "pedidos" as const,
     },
     {
       href: `${baseHref}/pqrs`,
       icon: "support_agent",
       label: "PQRs",
       group: "General",
+      module: "pqr" as const,
     },
     {
       href: `${baseHref}/integraciones`,
@@ -114,7 +131,12 @@ export function TenantsShell({ children }: TenantsShellProps) {
       group: "Integraciones",
     },
     { href: `${baseHref}/users`, icon: "group", label: "Usuarios", group: "Usuarios" },
-  ].filter((e) => tenantId || e.group === "General");
+  ].filter((e) => {
+    if (!tenantId && e.group !== "General") return false;
+    const m = e.module as "pqr" | "pedidos" | "reservas" | "conocimiento" | undefined;
+    if (m && !hasModule(m)) return false;
+    return true;
+  });
 
   const groups = [...new Set(navEntries.map((e) => e.group))];
 

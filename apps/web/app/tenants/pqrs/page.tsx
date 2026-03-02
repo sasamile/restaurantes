@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useQuery, useMutation } from "convex/react";
+import { useRequireModule } from "@/lib/use-require-module";
 import { api } from "@/convex";
 import type { Id } from "@/convex";
 import { useTenant } from "@/lib/tenant-context";
@@ -50,6 +51,7 @@ const TYPE_ICONS: Record<PqrType, React.ElementType> = {
 };
 
 export default function PQRsPage() {
+  useRequireModule("pqr");
   const { tenantId } = useTenant();
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [typeFilter, setTypeFilter] = React.useState<string>("all");

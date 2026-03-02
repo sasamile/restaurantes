@@ -21,6 +21,15 @@ export default defineSchema({
     logoUrl: v.optional(v.string()),
     address: v.optional(v.string()),
     phone: v.optional(v.string()),
+    /** Módulos habilitados por restaurante. undefined = todos habilitados (compatibilidad) */
+    enabledModules: v.optional(
+      v.object({
+        pqr: v.optional(v.boolean()),
+        pedidos: v.optional(v.boolean()),
+        reservas: v.optional(v.boolean()),
+        conocimiento: v.optional(v.boolean()),
+      })
+    ),
     createdAt: v.number(),
   })
     .index("by_status", ["status"]),
@@ -353,4 +362,13 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_tenant", ["tenantId"]),
+
+  // Uso diario del Centro de Aprendizaje (límite 2000 créditos/día por tenant)
+  learningUsage: defineTable({
+    tenantId: v.id("tenants"),
+    date: v.string(), // "YYYY-MM-DD"
+    count: v.number(),
+    highConfidenceCount: v.number(), // respuestas con confianza alta
+  })
+    .index("by_tenant_date", ["tenantId", "date"]),
 });

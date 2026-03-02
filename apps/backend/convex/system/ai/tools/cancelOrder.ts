@@ -27,6 +27,13 @@ export const cancelOrder = createTool({
     );
     if (!conversation) return "Conversación no encontrada.";
 
+    const tenant = await ctx.runQuery(api.tenants.get, {
+      tenantId: conversation.tenantId,
+    });
+    if (tenant?.enabledModules?.pedidos === false) {
+      return "Este restaurante no tiene habilitado el módulo de pedidos. No puedo cancelar pedidos por este canal.";
+    }
+
     const lastOrder = await ctx.runQuery(api.requests.getLastByConversationId, {
       conversationId: conversation._id,
     });

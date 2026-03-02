@@ -19,6 +19,7 @@ import {
   CheckIcon,
   CheckCircle2,
   Send,
+  Wand2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -89,6 +90,7 @@ export default function InboxPage() {
     conversationId: Id<"conversations">;
   } | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [improving, setImproving] = useState(false);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -127,6 +129,7 @@ export default function InboxPage() {
   );
   const sendMessage = useAction(api.ycloud.sendWhatsAppMessage);
   const sendMedia = useAction(api.ycloud.sendWhatsAppMedia);
+  const improveMessage = useAction(api.improveMessage.improve);
   const generateUploadUrl = useMutation(api.ycloud.generateMediaUploadUrl);
   const updatePriority = useMutation(api.conversations.updatePriority);
   const updateAssignedTo = useMutation(api.conversations.updateAssignedTo);
@@ -404,6 +407,20 @@ export default function InboxPage() {
     mediaRecorderRef.current?.stop();
     mediaRecorderRef.current = null;
     setIsRecording(false);
+  };
+
+  const handleImproveText = async () => {
+    const t = replyText.trim();
+    if (!t || improving) return;
+    setImproving(true);
+    try {
+      const improved = await improveMessage({ text: t });
+      setReplyText(improved);
+    } catch {
+      setSendError("No se pudo mejorar el texto");
+    } finally {
+      setImproving(false);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -1241,6 +1258,15 @@ export default function InboxPage() {
                       title={isRecording ? "Detener grabación" : "Grabar nota de voz"}
                     >
                       <Mic className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleImproveText}
+                      disabled={!replyText.trim() || improving}
+                      className="size-9 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Mejorar texto"
+                    >
+                      <Wand2 className="h-4 w-4" />
                     </button>
                   </div>
                   <input

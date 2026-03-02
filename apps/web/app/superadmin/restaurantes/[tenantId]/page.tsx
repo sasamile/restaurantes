@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { DEFAULT_RESTAURANTE_FORM, type RestauranteFormState } from "../../../../types/types";
 import { RestauranteProfileHeader } from "@/components/(admin)/tenanId/RestauranteProfileHeader";
 import { GeneralTab } from "@/components/(admin)/tenanId/GeneralTab";
+import { ModulosTab } from "@/components/(admin)/tenanId/ModulosTab";
 import { FormularioTab } from "@/components/(admin)/tenanId/FormularioTab";
 import { PromptTab } from "@/components/(admin)/tenanId/PromptTab";
 import { AdministradoresTab } from "@/components/(admin)/tenanId/AdministradoresTab";
@@ -31,7 +32,7 @@ export default function RestauranteDetailPage() {
   const updateTenant = useMutation(api.tenants.update);
 
   const [activeTab, setActiveTab] = useState<
-    "general" | "administradores" | "formulario" | "prompt"
+    "general" | "modulos" | "administradores" | "formulario" | "prompt"
   >("general");
   const [showEditModal, setShowEditModal] = useState(false);
   const [form, setForm] = useState<RestauranteFormState>(
@@ -123,6 +124,12 @@ export default function RestauranteDetailPage() {
             <div className="p-6 sm:p-8">
               {activeTab === "general" && (
                 <GeneralTab tenant={tenant} onEdit={openEdit} />
+              )}
+              {activeTab === "modulos" && (
+                <ModulosTab
+                  tenantId={tenant._id}
+                  enabledModules={tenant.enabledModules}
+                />
               )}
               {activeTab === "administradores" && (
                 <AdministradoresTab tenantId={tenant._id} />

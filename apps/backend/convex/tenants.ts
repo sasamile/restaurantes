@@ -73,6 +73,15 @@ export const create = mutation({
   },
 });
 
+const enabledModulesValidator = v.optional(
+  v.object({
+    pqr: v.optional(v.boolean()),
+    pedidos: v.optional(v.boolean()),
+    reservas: v.optional(v.boolean()),
+    conocimiento: v.optional(v.boolean()),
+  })
+);
+
 export const update = mutation({
   args: {
     tenantId: v.id("tenants"),
@@ -91,6 +100,7 @@ export const update = mutation({
     logoStorageId: v.optional(v.id("_storage")),
     address: v.optional(v.string()),
     phone: v.optional(v.string()),
+    enabledModules: enabledModulesValidator,
   },
   handler: async (ctx, args) => {
     const { tenantId, logoStorageId, ...rest } = args;

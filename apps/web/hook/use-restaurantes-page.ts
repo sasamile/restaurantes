@@ -19,6 +19,12 @@ export type TenantWithPlan = {
   logoUrl: string | null;
   address: string | null;
   phone: string | null;
+  enabledModules?: {
+    pqr?: boolean;
+    pedidos?: boolean;
+    reservas?: boolean;
+    conocimiento?: boolean;
+  } | null;
 };
 
 export function useRestaurantesPage() {

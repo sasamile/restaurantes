@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Suspense } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
+import { useRequireModule } from "@/lib/use-require-module";
 import { api } from "@/convex";
 import type { Id } from "@/convex";
 import { useTenant } from "@/lib/tenant-context";
@@ -53,6 +54,7 @@ type Reservation = {
 };
 
 function ReservasContent() {
+  useRequireModule("reservas");
   const { tenantId } = useTenant();
   const searchParams = useSearchParams();
   const googleStatus = searchParams?.get("google");
