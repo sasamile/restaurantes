@@ -1,6 +1,12 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  "globalEnv": [
+    "NEXT_PUBLIC_CONVEX_URL",
+    "NEXT_PUBLIC_GOOGLE_CLIENT_ID",
+    "NEXT_PUBLIC_CONVEX_SITE",
+    "VOICE_INTEGRATION_ID"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
