@@ -6,7 +6,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex";
 import { useTenant } from "@/lib/tenant-context";
 
-type ModuleKey = "pqr" | "pedidos" | "reservas" | "conocimiento";
+type ModuleKey = "pqr" | "pedidos" | "reservas" | "conocimiento" | "trabajaConNosotros";
 
 /**
  * Redirige a /tenants si el módulo no está habilitado para el tenant actual.

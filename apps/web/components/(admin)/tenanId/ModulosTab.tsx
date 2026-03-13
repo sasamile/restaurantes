@@ -13,6 +13,7 @@ type TenantModules = {
   pedidos?: boolean;
   reservas?: boolean;
   conocimiento?: boolean;
+  trabajaConNosotros?: boolean;
 };
 
 export function ModulosTab({
@@ -28,6 +29,7 @@ export function ModulosTab({
     pedidos: enabledModules?.pedidos ?? true,
     reservas: enabledModules?.reservas ?? true,
     conocimiento: enabledModules?.conocimiento ?? true,
+    trabajaConNosotros: enabledModules?.trabajaConNosotros ?? true,
   }));
   const [saving, setSaving] = useState(false);
 
@@ -37,6 +39,7 @@ export function ModulosTab({
       pedidos: enabledModules?.pedidos ?? true,
       reservas: enabledModules?.reservas ?? true,
       conocimiento: enabledModules?.conocimiento ?? true,
+      trabajaConNosotros: enabledModules?.trabajaConNosotros ?? true,
     });
   }, [enabledModules]);
 

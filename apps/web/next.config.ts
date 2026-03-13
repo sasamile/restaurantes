@@ -17,6 +17,10 @@ const nextConfig: NextConfig = {
         hostname: "tough-butterfly-537.convex.cloud",
         pathname: "/api/storage/**",
       },
+      {
+        protocol: "https",
+        hostname: "instagram.fvvc1-1.fna.fbcdn.net",
+      },
     ],
   },
 };

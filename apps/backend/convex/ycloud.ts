@@ -1,5 +1,5 @@
 import { action, mutation } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
 
 /** Inserta saltos de línea para legibilidad cuando el LLM responde todo junto. */
@@ -80,6 +80,37 @@ export const sendWhatsAppMessage = action({
     });
 
     return { ok: true, ycloudId: data.id };
+  },
+});
+
+/**
+ * Programa el procesamiento del mensaje entrante en segundo plano.
+ * El webhook retorna 200 de inmediato para evitar timeout de YCloud.
+ */
+export const scheduleInboundProcessing = mutation({
+  args: {
+    tenantId: v.id("tenants"),
+    eventId: v.string(),
+    contactId: v.string(),
+    customerName: v.string(),
+    channel: v.union(
+      v.literal("whatsapp"),
+      v.literal("messenger"),
+      v.literal("webchat")
+    ),
+    text: v.string(),
+    mediaUrl: v.optional(v.string()),
+    mediaType: v.optional(
+      v.union(
+        v.literal("image"),
+        v.literal("video"),
+        v.literal("audio"),
+        v.literal("document")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    await ctx.scheduler.runAfter(0, internal.system.ycloud.processInboundMessage, args);
   },
 });
 

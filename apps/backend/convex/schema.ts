@@ -21,6 +21,8 @@ export default defineSchema({
     logoUrl: v.optional(v.string()),
     address: v.optional(v.string()),
     phone: v.optional(v.string()),
+    /** Correos para notificar cuando se crea una PQR (Brevo) */
+    pqrNotificationEmails: v.optional(v.array(v.string())),
     /** Módulos habilitados por restaurante. undefined = todos habilitados (compatibilidad) */
     enabledModules: v.optional(
       v.object({
@@ -28,6 +30,7 @@ export default defineSchema({
         pedidos: v.optional(v.boolean()),
         reservas: v.optional(v.boolean()),
         conocimiento: v.optional(v.boolean()),
+        trabajaConNosotros: v.optional(v.boolean()),
       })
     ),
     createdAt: v.number(),
@@ -326,7 +329,7 @@ export default defineSchema({
       v.literal("complaint"),
       v.literal("claim")
     ),
-    customerName: v.string(),
+    customerName: v.string(), // "Anónimo" si es PQR anónima
     customerEmail: v.optional(v.string()),
     customerPhone: v.optional(v.string()),
     subject: v.string(),
@@ -379,6 +382,19 @@ export default defineSchema({
   })
     .index("by_tenant", ["tenantId"])
     .index("by_tenant_contact", ["tenantId", "externalContactId"]),
+
+  // Trabaja con nosotros: ubicaciones y vacantes
+  jobLocations: defineTable({
+    tenantId: v.id("tenants"),
+    city: v.string(), // ej: Medellín, Bogotá, Barranquilla
+    mallName: v.string(), // centro comercial / ubicación: Mayorca, Viva Envigado, Santa Fe, etc.
+    isPrincipal: v.optional(v.boolean()), // true si es sede principal
+    vacancies: v.array(v.string()), // ej: ["PARRILLERO", "MESERA", "CAJERO"]
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_tenant", ["tenantId"])
+    .index("by_tenant_city", ["tenantId", "city"]),
 
   // Uso diario del Centro de Aprendizaje (límite 2000 créditos/día por tenant)
   learningUsage: defineTable({

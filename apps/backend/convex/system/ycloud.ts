@@ -13,6 +13,7 @@ import { setPriority } from "./ai/tools/setPriority";
 import { search } from "./ai/tools/search";
 import { createReservation } from "./ai/tools/createReservation";
 import { createPQR } from "./ai/tools/createPQR";
+import { searchVacancies } from "./ai/tools/searchVacancies";
 import { createOrder } from "./ai/tools/createOrder";
 import { updateOrder } from "./ai/tools/updateOrder";
 import { cancelOrder } from "./ai/tools/cancelOrder";
@@ -124,11 +125,13 @@ export const processInboundMessage = internalAction({
         const hasReservas = modules.reservas !== false;
         const hasPedidos = modules.pedidos !== false;
         const hasPqr = modules.pqr !== false;
+        const hasTrabajaConNosotros = modules.trabajaConNosotros !== false;
 
         const enabledList: string[] = [];
         if (hasReservas) enabledList.push("reservas");
         if (hasPedidos) enabledList.push("pedidos");
         if (hasPqr) enabledList.push("PQR (quejas/reclamos)");
+        if (hasTrabajaConNosotros) enabledList.push("trabaja con nosotros");
 
         const modulesContext = enabledList.length > 0
           ? `[MÓDULOS HABILITADOS - OBLIGATORIO]
@@ -139,6 +142,9 @@ ${!hasPedidos ? `- Si el cliente pide PEDIDO y pedidos NO está habilitado → r
 ${!hasPqr
     ? `- Si el cliente pide QUEJA/RECLAMO/PQR y PQR NO está habilitado → responde: "Lo sentimos, no podemos recibir quejas o reclamos por este canal. Te recomendamos contactar directamente al restaurante."`
     : "- Si el cliente quiere hacer una PQR (petición, queja o reclamo) y PQR está habilitado, SIEMPRE registra la PQR usando createPQRTool. NUNCA digas que no puedes recibir quejas o reclamos por este canal."}
+${!hasTrabajaConNosotros
+    ? `- Si el cliente pregunta por VACANTES/TRABAJO y trabaja con nosotros NO está habilitado → responde: "Lo sentimos, no tengo información de vacantes por este canal. Te recomendamos contactar directamente al restaurante."`
+    : "- Si el cliente pregunta por vacantes o quiere trabajar: primero llama searchVacanciesTool para ver qué hay. Si quiere postularse y ya dio nombre, email, ciudad/sede y puesto → llama applyForJobTool."}
 
 [Fin MÓDULOS HABILITADOS]\n\n`
           : "";
@@ -188,6 +194,9 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
           tools.cancelOrderTool = cancelOrder;
         }
         if (hasPqr) tools.createPQRTool = createPQR;
+        if (hasTrabajaConNosotros) {
+          tools.searchVacanciesTool = searchVacancies;
+        }
 
         await supportAgent.generateText(ctx, { threadId }, {
           prompt: promptWithContext,

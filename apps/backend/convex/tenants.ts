@@ -79,6 +79,7 @@ const enabledModulesValidator = v.optional(
     pedidos: v.optional(v.boolean()),
     reservas: v.optional(v.boolean()),
     conocimiento: v.optional(v.boolean()),
+    trabajaConNosotros: v.optional(v.boolean()),
   })
 );
 
@@ -100,6 +101,7 @@ export const update = mutation({
     logoStorageId: v.optional(v.id("_storage")),
     address: v.optional(v.string()),
     phone: v.optional(v.string()),
+    pqrNotificationEmails: v.optional(v.array(v.string())),
     enabledModules: enabledModulesValidator,
   },
   handler: async (ctx, args) => {

@@ -22,6 +22,7 @@ export default function AjustesPage() {
     secondaryColor: DEFAULT_SECONDARY,
     address: "",
     phone: "",
+    pqrNotificationEmails: "",
   });
   const tenant = useQuery(api.tenants.get, tenantId ? { tenantId } : "skip");
   const uploadPreviewUrl = useQuery(
@@ -39,6 +40,7 @@ export default function AjustesPage() {
 
   React.useEffect(() => {
     if (tenant) {
+      const emails = (tenant as { pqrNotificationEmails?: string[] }).pqrNotificationEmails ?? [];
       setForm((f) => ({
         ...f,
         name: tenant.name ?? "",
@@ -48,6 +50,7 @@ export default function AjustesPage() {
         secondaryColor: tenant.secondaryColor ?? DEFAULT_SECONDARY,
         address: tenant.address ?? "",
         phone: tenant.phone ?? "",
+        pqrNotificationEmails: emails.join("\n"),
       }));
     }
   }, [tenant]);
@@ -92,6 +95,10 @@ export default function AjustesPage() {
     setSaving(true);
     setSaved(false);
     try {
+      const emails = form.pqrNotificationEmails
+        .split(/[\n,;]+/)
+        .map((e) => e.trim())
+        .filter(Boolean);
       await updateTenant({
         tenantId,
         name: form.name.trim() || undefined,
@@ -104,6 +111,7 @@ export default function AjustesPage() {
         secondaryColor: form.secondaryColor || undefined,
         address: form.address.trim() || undefined,
         phone: form.phone.trim() || undefined,
+        pqrNotificationEmails: emails.length > 0 ? emails : undefined,
       });
       setForm((f) => ({ ...f, logoStorageId: null }));
       setSaved(true);
@@ -272,6 +280,20 @@ export default function AjustesPage() {
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
               placeholder="+57 300 123 4567"
               className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            />
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+            <label className="mb-1 block text-sm font-medium text-slate-700">Correos para notificación de PQRs</label>
+            <p className="mb-2 text-xs text-slate-500">
+              Al crear una PQR (petición, queja o reclamo), se enviará un correo con la información a estas direcciones. Una por línea o separadas por coma.
+            </p>
+            <textarea
+              value={form.pqrNotificationEmails}
+              onChange={(e) => setForm((f) => ({ ...f, pqrNotificationEmails: e.target.value }))}
+              placeholder="admin@restaurante.com&#10;gerencia@restaurante.com"
+              rows={3}
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
             />
           </div>
 

@@ -11,7 +11,7 @@ export const createPQR = createTool({
     "Registrar una PQR (Petición, Queja o Reclamo) formal. NO uses para cancelar pedidos; eso es cancelOrderTool. PQRs son para quejas/reclamos/peticiones (ej. pedido en mal estado, producto defectuoso). Requiere: tipo (petition/complaint/claim), nombre, asunto y descripción.",
   args: jsonSchema<{
     type: "petition" | "complaint" | "claim";
-    customerName: string;
+    customerName?: string;
     customerPhone?: string;
     customerEmail?: string;
     subject: string;
@@ -24,13 +24,13 @@ export const createPQR = createTool({
         enum: ["petition", "complaint", "claim"],
         description: "Tipo: petition (petición), complaint (queja), claim (reclamo)",
       },
-      customerName: { type: "string", description: "Nombre del cliente" },
+      customerName: { type: "string", description: "Nombre del cliente (opcional; si no hay, PQR anónima)" },
       customerPhone: { type: "string", description: "Teléfono (opcional)" },
       customerEmail: { type: "string", description: "Email (opcional)" },
       subject: { type: "string", description: "Asunto o resumen de la PQR" },
       description: { type: "string", description: "Descripción detallada" },
     },
-    required: ["type", "customerName", "subject", "description"],
+    required: ["type", "subject", "description"],
     additionalProperties: false,
   }),
   handler: async (ctx, args) => {
@@ -47,17 +47,16 @@ export const createPQR = createTool({
     if (tenant?.enabledModules?.pqr === false) {
       return "Este restaurante no tiene habilitado el módulo de PQR (Peticiones, Quejas, Reclamos). No puedo registrar tu solicitud por este canal. Por favor contacta directamente al restaurante.";
     }
-    const customerName = args.customerName.trim();
     const subject = args.subject.trim();
     const description = args.description.trim();
-    if (!customerName || !subject || !description) {
-      return "Faltan nombre, asunto o descripción. Pide al cliente que los indique.";
+    if (!subject || !description) {
+      return "Faltan asunto o descripción. Pide al cliente que los indique.";
     }
 
     await ctx.runMutation(api.pqrs.create, {
       tenantId,
       type: args.type,
-      customerName,
+      customerName: args.customerName?.trim() || "Anónimo",
       customerPhone: args.customerPhone?.trim() || undefined,
       customerEmail: args.customerEmail?.trim() || undefined,
       subject,

@@ -1,4 +1,4 @@
-type ModuleKey = "pqr" | "pedidos" | "reservas" | "conocimiento";
+type ModuleKey = "pqr" | "pedidos" | "reservas" | "conocimiento" | "trabajaConNosotros";
 
 /** Páginas del tenant que se pueden restringir por usuario */
 export const PERMISSION_PAGES = [
@@ -7,6 +7,7 @@ export const PERMISSION_PAGES = [
   { key: "reservas", label: "Reservas", group: "General", module: "reservas" as ModuleKey },
   { key: "pedidos", label: "Pedidos", group: "General", module: "pedidos" as ModuleKey },
   { key: "pqrs", label: "PQRs", group: "General", module: "pqr" as ModuleKey },
+  { key: "trabajaConNosotros", label: "Trabaja con Nosotros", group: "General", module: "trabajaConNosotros" as ModuleKey },
   { key: "clientes", label: "Clientes", group: "General", module: undefined as ModuleKey | undefined },
   { key: "knowledge", label: "Conocimiento", group: "Conocimiento", module: "conocimiento" as ModuleKey },
   { key: "aprendizaje", label: "Aprendizaje", group: "Conocimiento", module: "conocimiento" as ModuleKey },
@@ -17,7 +18,7 @@ export const PERMISSION_PAGES = [
 export type PermissionPageKey = (typeof PERMISSION_PAGES)[number]["key"];
 
 export function getVisiblePermissionPages(
-  enabledModules?: { pqr?: boolean; pedidos?: boolean; reservas?: boolean; conocimiento?: boolean }
+  enabledModules?: { pqr?: boolean; pedidos?: boolean; reservas?: boolean; conocimiento?: boolean; trabajaConNosotros?: boolean }
 ) {
   if (!enabledModules) return [...PERMISSION_PAGES];
   return PERMISSION_PAGES.filter((p) => {

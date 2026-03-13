@@ -20,6 +20,7 @@ import type * as googleCalendarImport from "../googleCalendarImport.js";
 import type * as http from "../http.js";
 import type * as improveMessage from "../improveMessage.js";
 import type * as integrations from "../integrations.js";
+import type * as jobLocations from "../jobLocations.js";
 import type * as knowledge from "../knowledge.js";
 import type * as knowledgeFileParsing from "../knowledgeFileParsing.js";
 import type * as learning from "../learning.js";
@@ -43,6 +44,7 @@ import type * as system_ai_tools_createPQR from "../system/ai/tools/createPQR.js
 import type * as system_ai_tools_createReservation from "../system/ai/tools/createReservation.js";
 import type * as system_ai_tools_resolveConversation from "../system/ai/tools/resolveConversation.js";
 import type * as system_ai_tools_search from "../system/ai/tools/search.js";
+import type * as system_ai_tools_searchVacancies from "../system/ai/tools/searchVacancies.js";
 import type * as system_ai_tools_setPriority from "../system/ai/tools/setPriority.js";
 import type * as system_ai_tools_updateCustomerInfo from "../system/ai/tools/updateCustomerInfo.js";
 import type * as system_ai_tools_updateOrder from "../system/ai/tools/updateOrder.js";
@@ -75,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   improveMessage: typeof improveMessage;
   integrations: typeof integrations;
+  jobLocations: typeof jobLocations;
   knowledge: typeof knowledge;
   knowledgeFileParsing: typeof knowledgeFileParsing;
   learning: typeof learning;
@@ -98,6 +101,7 @@ declare const fullApi: ApiFromModules<{
   "system/ai/tools/createReservation": typeof system_ai_tools_createReservation;
   "system/ai/tools/resolveConversation": typeof system_ai_tools_resolveConversation;
   "system/ai/tools/search": typeof system_ai_tools_search;
+  "system/ai/tools/searchVacancies": typeof system_ai_tools_searchVacancies;
   "system/ai/tools/setPriority": typeof system_ai_tools_setPriority;
   "system/ai/tools/updateCustomerInfo": typeof system_ai_tools_updateCustomerInfo;
   "system/ai/tools/updateOrder": typeof system_ai_tools_updateOrder;

@@ -61,6 +61,7 @@ export default function PQRsPage() {
   const [deleteId, setDeleteId] = React.useState<Id<"pqrs"> | null>(null);
   const [form, setForm] = React.useState({
     type: "petition" as PqrType,
+    anonymous: false,
     customerName: "",
     customerEmail: "",
     customerPhone: "",
@@ -103,20 +104,22 @@ export default function PQRsPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tenantId) return;
-    if (!form.customerName.trim() || !form.subject.trim() || !form.description.trim()) return;
+    if (!form.subject.trim() || !form.description.trim()) return;
+    if (!form.anonymous && !form.customerName.trim()) return;
     setSaving(true);
     try {
       await createPqr({
         tenantId,
         type: form.type,
-        customerName: form.customerName.trim(),
+        customerName: form.anonymous ? undefined : form.customerName.trim() || undefined,
         customerEmail: form.customerEmail.trim() || undefined,
         customerPhone: form.customerPhone.trim() || undefined,
         subject: form.subject.trim(),
         description: form.description.trim(),
+        source: "web",
       });
       setCreateOpen(false);
-      setForm({ type: "petition", customerName: "", customerEmail: "", customerPhone: "", subject: "", description: "" });
+      setForm({ type: "petition", anonymous: false, customerName: "", customerEmail: "", customerPhone: "", subject: "", description: "" });
     } catch (err) {
       alert(err instanceof Error ? err.message : "Error al crear");
     } finally {
@@ -349,17 +352,32 @@ export default function PQRsPage() {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Nombre del cliente *</label>
+            <div className="flex items-center gap-2">
               <input
-                type="text"
-                required
-                value={form.customerName}
-                onChange={(e) => setForm((f) => ({ ...f, customerName: e.target.value }))}
-                placeholder="Ej. Juan Pérez"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 ring-1 ring-slate-900/5"
+                type="checkbox"
+                id="pqr-anonymous"
+                checked={form.anonymous}
+                onChange={(e) => setForm((f) => ({ ...f, anonymous: e.target.checked }))}
+                className="rounded border-slate-300"
               />
+              <label htmlFor="pqr-anonymous" className="text-sm font-medium text-slate-700">
+                PQR anónima
+              </label>
             </div>
+            {!form.anonymous && (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Nombre del cliente *</label>
+                <input
+                  type="text"
+                  required
+                  value={form.customerName}
+                  onChange={(e) => setForm((f) => ({ ...f, customerName: e.target.value }))}
+                  placeholder="Ej. Juan Pérez"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 ring-1 ring-slate-900/5"
+                />
+              </div>
+            )}
+            {!form.anonymous && (
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
@@ -382,6 +400,7 @@ export default function PQRsPage() {
                 />
               </div>
             </div>
+            )}
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Asunto *</label>
               <input

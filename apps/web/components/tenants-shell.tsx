@@ -35,7 +35,7 @@ interface NavEntry {
   disabled?: boolean;
   disabledTitle?: string;
   /** Requiere este módulo habilitado. undefined = siempre visible */
-  module?: "pqr" | "pedidos" | "reservas" | "conocimiento";
+  module?: "pqr" | "pedidos" | "reservas" | "conocimiento" | "trabajaConNosotros";
 }
 
 export function TenantsShell({ children }: TenantsShellProps) {
@@ -102,7 +102,7 @@ export function TenantsShell({ children }: TenantsShellProps) {
     pathname === href || (href !== "/tenants" && pathname.startsWith(href));
 
   const modules = displayTenant?.enabledModules;
-  const hasModule = (key: "pqr" | "pedidos" | "reservas" | "conocimiento") =>
+  const hasModule = (key: "pqr" | "pedidos" | "reservas" | "conocimiento" | "trabajaConNosotros") =>
     modules?.[key] !== false;
 
   const allowedPages = membership?.allowedPages;
@@ -164,6 +164,14 @@ export function TenantsShell({ children }: TenantsShellProps) {
       module: "pqr" as const,
     },
     {
+      href: `${baseHref}/trabaja-con-nosotros`,
+      pageKey: "trabajaConNosotros",
+      icon: "work",
+      label: "Trabaja con Nosotros",
+      group: "General",
+      module: "trabajaConNosotros" as const,
+    },
+    {
       href: `${baseHref}/clientes`,
       pageKey: "clientes",
       icon: "person",
@@ -180,7 +188,7 @@ export function TenantsShell({ children }: TenantsShellProps) {
     { href: `${baseHref}/users`, pageKey: "users", icon: "group", label: "Usuarios", group: "Usuarios" },
   ].filter((e) => {
     if (!tenantId && e.group !== "General") return false;
-    const m = e.module as "pqr" | "pedidos" | "reservas" | "conocimiento" | undefined;
+    const m = e.module as "pqr" | "pedidos" | "reservas" | "conocimiento" | "trabajaConNosotros" | undefined;
     if (m && !hasModule(m)) return false;
     if (!hasPageAccess(e.pageKey)) return false;
     return true;

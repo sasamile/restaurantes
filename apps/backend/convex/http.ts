@@ -167,7 +167,9 @@ const webhookYCloud = httpAction(async (ctx, request) => {
   const eventId =
     (body as { id?: string })?.id ?? `evt_${Date.now()}_${contactId}`;
 
-  await ctx.runAction(internal.system.ycloud.processInboundMessage, {
+  // Programar procesamiento en segundo plano; respondemos 200 de inmediato para evitar
+  // que YCloud desconecte por timeout (la IA puede tardar 15-60 segundos)
+  await ctx.runMutation(api.ycloud.scheduleInboundProcessing, {
     tenantId,
     eventId,
     contactId,

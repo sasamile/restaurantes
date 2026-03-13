@@ -1,4 +1,5 @@
-import { mutation, query } from "./_generated/server";
+import { internalAction, mutation, query } from "./_generated/server";
+import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
 
 export const list = query({
@@ -37,7 +38,7 @@ export const create = mutation({
       v.literal("complaint"),
       v.literal("claim")
     ),
-    customerName: v.string(),
+    customerName: v.optional(v.string()), // Si vacío o anónimo, se guarda "Anónimo"
     customerEmail: v.optional(v.string()),
     customerPhone: v.optional(v.string()),
     subject: v.string(),
@@ -53,19 +54,82 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    return await ctx.db.insert("pqrs", {
+    const customerName = (args.customerName?.trim() || "Anónimo");
+    const id = await ctx.db.insert("pqrs", {
       tenantId: args.tenantId,
       type: args.type,
-      customerName: args.customerName,
-      customerEmail: args.customerEmail,
-      customerPhone: args.customerPhone,
-      subject: args.subject,
-      description: args.description,
+      customerName,
+      customerEmail: args.customerEmail?.trim() || undefined,
+      customerPhone: args.customerPhone?.trim() || undefined,
+      subject: args.subject.trim(),
+      description: args.description.trim(),
       status: "open",
       source: args.source,
       createdAt: now,
       updatedAt: now,
     });
+    await ctx.scheduler.runAfter(0, internal.pqrs.sendPqrNotificationEmail, { pqrId: id });
+    return id;
+  },
+});
+
+/** Envía por Brevo la notificación de PQR a los correos configurados del tenant */
+export const sendPqrNotificationEmail = internalAction({
+  args: { pqrId: v.id("pqrs") },
+  handler: async (ctx, args) => {
+    const pqr = await ctx.runQuery(api.pqrs.get, { pqrId: args.pqrId });
+    if (!pqr) return;
+    const tenant = await ctx.runQuery(api.tenants.get, { tenantId: pqr.tenantId });
+    if (!tenant) return;
+    const emails = tenant.pqrNotificationEmails?.filter((e) => e?.trim()) ?? [];
+    if (emails.length === 0) return;
+
+    const apiKey = process.env.BREVO_API_KEY;
+    const senderEmail = process.env.BREVO_SENDER_EMAIL ?? "noreply@example.com";
+    const senderName = process.env.BREVO_SENDER_NAME ?? "Sistema";
+    if (!apiKey) {
+      console.warn("BREVO_API_KEY no configurada, no se envía email de PQR");
+      return;
+    }
+
+    const typeLabel =
+      pqr.type === "petition" ? "Petición" : pqr.type === "complaint" ? "Queja" : "Reclamo";
+    const subject = `[PQR] Nueva ${typeLabel} - ${pqr.subject}`;
+    const html = `
+<!DOCTYPE html>
+<html>
+<body style="font-family: sans-serif; line-height: 1.6; color: #333;">
+  <h2>Nueva ${typeLabel} registrada</h2>
+  <p><strong>Restaurante:</strong> ${tenant.name ?? "—"}</p>
+  <p><strong>Asunto:</strong> ${pqr.subject}</p>
+  <p><strong>Descripción:</strong></p>
+  <p>${pqr.description.replace(/\n/g, "<br>")}</p>
+  <hr>
+  <p><strong>Cliente:</strong> ${pqr.customerName}</p>
+  ${pqr.customerEmail ? `<p><strong>Email:</strong> ${pqr.customerEmail}</p>` : ""}
+  ${pqr.customerPhone ? `<p><strong>Teléfono:</strong> ${pqr.customerPhone}</p>` : ""}
+  <p style="color:#666; font-size:12px;">Canal: ${pqr.source ?? "—"} · ${new Date(pqr.createdAt).toLocaleString("es")}</p>
+</body>
+</html>`;
+
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": apiKey,
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: emails.map((e) => ({ email: e.trim() })),
+        subject,
+        htmlContent: html,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("Brevo PQR email error:", res.status, err);
+    }
   },
 });
 
