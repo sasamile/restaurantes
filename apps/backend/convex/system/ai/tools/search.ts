@@ -4,18 +4,18 @@ import { internal } from "../../../_generated/api";
 import rag from "../rag";
 import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
-import { supportAgent } from "../agents/supportAgent";
 import { SEARCH_INTERPRETER_PROMPT } from "../constants";
 
 export const search = createTool({
   description:
-    "Busca en la base de conocimiento del restaurante información sobre menú, precios, horarios, ubicación y FAQs",
+    "Busca en la base de conocimiento del restaurante información sobre menú, precios, horarios, sedes, ubicación, domicilios, barrios y FAQs. Puedes llamarla varias veces con distintas consultas si la primera no devuelve resultados.",
   args: jsonSchema<{ query: string }>({
     type: "object",
     properties: {
       query: {
         type: "string",
-        description: "La consulta para buscar información relevante",
+        description:
+          "La consulta para buscar. Para sedes usa términos como: 'sede [barrio]', 'sede [ciudad]', 'sedes domicilios', 'barrios sedes'. Prueba varias consultas si la primera no da resultados.",
       },
     },
     required: ["query"],
@@ -43,6 +43,10 @@ export const search = createTool({
       limit: 5,
     });
 
+    if (!searchResult.entries.length) {
+      return `No se encontró información para "${args.query}" en la base de conocimiento. Intenta con otra consulta más amplia o diferente.`;
+    }
+
     const contextText = `Resultados en ${searchResult.entries
       .map((e) => e.title || null)
       .filter((t) => t !== null)
@@ -57,14 +61,6 @@ export const search = createTool({
         },
       ],
       model: openai.chat("gpt-4o-mini"),
-    });
-
-    await supportAgent.saveMessage(ctx, {
-      threadId: ctx.threadId,
-      message: {
-        role: "assistant",
-        content: response.text,
-      },
     });
 
     return response.text;

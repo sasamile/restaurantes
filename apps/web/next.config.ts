@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   images: {
     remotePatterns: [
       {
@@ -22,6 +21,14 @@ const nextConfig: NextConfig = {
         hostname: "instagram.fvvc1-1.fna.fbcdn.net",
       },
     ],
+  },
+  webpack: (config) => {
+    // Evita que Next intente cargar el binario nativo de `canvas` en tiempo de compilación.
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      canvas: false,
+    };
+    return config;
   },
 };
 

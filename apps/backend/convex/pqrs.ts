@@ -36,7 +36,9 @@ export const create = mutation({
     type: v.union(
       v.literal("petition"),
       v.literal("complaint"),
-      v.literal("claim")
+      v.literal("claim"),
+      v.literal("suggestion"),
+      v.literal("compliment")
     ),
     customerName: v.optional(v.string()), // Si vacío o anónimo, se guarda "Anónimo"
     customerEmail: v.optional(v.string()),
@@ -92,8 +94,14 @@ export const sendPqrNotificationEmail = internalAction({
       return;
     }
 
-    const typeLabel =
-      pqr.type === "petition" ? "Petición" : pqr.type === "complaint" ? "Queja" : "Reclamo";
+    const TYPE_LABELS: Record<string, string> = {
+      petition: "Petición",
+      complaint: "Queja",
+      claim: "Reclamo",
+      suggestion: "Sugerencia",
+      compliment: "Felicitación",
+    };
+    const typeLabel = TYPE_LABELS[pqr.type] ?? pqr.type;
     const subject = `[PQR] Nueva ${typeLabel} - ${pqr.subject}`;
     const html = `
 <!DOCTYPE html>

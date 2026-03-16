@@ -105,17 +105,21 @@ export const processInboundMessage = internalAction({
       // assignedTo null/undefined = Bot activo; assignedTo set = Agente humano (bot no responde)
       const isBotMode = !conversation.assignedTo;
 
-      // Si la conversación estaba cerrada y el cliente volvió a escribir -> reabrir para que el bot responda
-      if (conversation.status === "closed" && isBotMode) {
+      // Reabrir si estaba cerrada, o si estaba "pending" sin humano asignado.
+      // "pending" + sin humano asignado = punto muerto: el bot no responde y no hay humano.
+      // En ese caso el bot retoma la conversación.
+      const needsReopen =
+        conversation.status === "closed" ||
+        (conversation.status === "pending" && !conversation.assignedTo);
+      if (needsReopen && isBotMode) {
         await ctx.runMutation(internal.system.conversations.reopen, {
           threadId,
         });
       }
 
-      // Bot responde: open, o closed (acabamos de reabrir). No responde si pending (necesita humano)
+      // Bot responde si: open, o si acabamos de reabrir (closed/pending-sin-humano)
       const shouldTriggerAgent =
-        (conversation.status === "open" || conversation.status === "closed") &&
-        isBotMode;
+        (conversation.status === "open" || needsReopen) && isBotMode;
 
       if (shouldTriggerAgent) {
         const tenant = await ctx.runQuery(api.tenants.get, {
@@ -198,43 +202,75 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
           tools.searchVacanciesTool = searchVacancies;
         }
 
-        await supportAgent.generateText(ctx, { threadId }, {
-          prompt: promptWithContext,
-          tools: tools as Parameters<typeof supportAgent.generateText>[2]["tools"],
-        });
-
-        if (args.channel === "whatsapp") {
-          await new Promise((r) => setTimeout(r, 1000));
-
-          const messagesAfter: PaginationResult<MessageDoc> =
-            await supportAgent.listMessages(ctx, {
-              threadId,
-              paginationOpts: { numItems: 10, cursor: null },
-            });
-
-          const lastAssistantMessage = messagesAfter.page.find(
-            (msg) => msg.message?.role === "assistant"
-          );
-
-          if (lastAssistantMessage?.message) {
-            const messageContent = lastAssistantMessage.message.content;
-            const messageText: string =
-              typeof messageContent === "string"
-                ? messageContent
-                : Array.isArray(messageContent)
-                  ? (messageContent as { type: string; text?: string }[])
-                      .map((part) =>
-                        part.type === "text" ? part.text ?? "" : ""
-                      )
-                      .join("")
-                  : String(messageContent);
-
-            if (messageText.trim()) {
+        let agentResult: Awaited<ReturnType<typeof supportAgent.generateText>> | null = null;
+        try {
+          agentResult = await supportAgent.generateText(ctx, { threadId }, {
+            prompt: promptWithContext,
+            tools: tools as Parameters<typeof supportAgent.generateText>[2]["tools"],
+          });
+        } catch (agentErr) {
+          console.error("YCloud: generateText falló", {
+            tenantId: args.tenantId,
+            error: agentErr instanceof Error ? agentErr.message : String(agentErr),
+          });
+          if (args.channel === "whatsapp") {
+            try {
               await ctx.runAction(api.ycloud.sendWhatsAppMessage, {
                 tenantId: args.tenantId,
                 conversationId,
-                content: messageText,
+                content:
+                  "Lo sentimos, estamos experimentando dificultades técnicas en este momento.\n\nPor favor intenta de nuevo en unos minutos o contacta directamente al restaurante. 🙏",
               });
+            } catch { /* ignorar error de envío */ }
+          }
+          // No re-throw: el error ya fue manejado con el mensaje de fallback
+          return;
+        }
+
+        if (args.channel === "whatsapp") {
+          // Usar el texto devuelto directamente por el agente
+          const directText = typeof agentResult?.text === "string" ? agentResult.text.trim() : "";
+
+          if (directText) {
+            await ctx.runAction(api.ycloud.sendWhatsAppMessage, {
+              tenantId: args.tenantId,
+              conversationId,
+              content: directText,
+            });
+          } else {
+            // Fallback: tools como resolveConversation guardan su propio mensaje en el hilo.
+            // Si el agente no produjo texto final, enviamos el último mensaje guardado.
+            await new Promise((r) => setTimeout(r, 500));
+            const messagesAfter: PaginationResult<MessageDoc> =
+              await supportAgent.listMessages(ctx, {
+                threadId,
+                paginationOpts: { numItems: 10, cursor: null },
+              });
+
+            const lastAssistantMessage = messagesAfter.page.find(
+              (msg) => msg.message?.role === "assistant"
+            );
+
+            if (lastAssistantMessage?.message) {
+              const messageContent = lastAssistantMessage.message.content;
+              const messageText: string =
+                typeof messageContent === "string"
+                  ? messageContent
+                  : Array.isArray(messageContent)
+                    ? (messageContent as { type: string; text?: string }[])
+                        .map((part) =>
+                          part.type === "text" ? part.text ?? "" : ""
+                        )
+                        .join("")
+                    : String(messageContent);
+
+              if (messageText.trim()) {
+                await ctx.runAction(api.ycloud.sendWhatsAppMessage, {
+                  tenantId: args.tenantId,
+                  conversationId,
+                  content: messageText,
+                });
+              }
             }
           }
         }

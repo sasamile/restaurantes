@@ -6,7 +6,7 @@ import { useRequireModule } from "@/lib/use-require-module";
 import { api } from "@/convex";
 import type { Id } from "@/convex";
 import { useTenant } from "@/lib/tenant-context";
-import { Plus, Search, MessageSquare, AlertCircle, FileWarning } from "lucide-react";
+import { Plus, Search, MessageSquare, AlertCircle, FileWarning, Lightbulb, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -28,13 +28,15 @@ import {
 
 const DEFAULT_PRIMARY = "#197fe6";
 
-type PqrType = "petition" | "complaint" | "claim";
+type PqrType = "petition" | "complaint" | "claim" | "suggestion" | "compliment";
 type PqrStatus = "open" | "in_progress" | "resolved" | "closed";
 
 const TYPE_LABELS: Record<PqrType, string> = {
   petition: "Petición",
   complaint: "Queja",
   claim: "Reclamo",
+  suggestion: "Sugerencia",
+  compliment: "Felicitación",
 };
 
 const STATUS_LABELS: Record<PqrStatus, string> = {
@@ -48,6 +50,8 @@ const TYPE_ICONS: Record<PqrType, React.ElementType> = {
   petition: MessageSquare,
   complaint: AlertCircle,
   claim: FileWarning,
+  suggestion: Lightbulb,
+  compliment: Star,
 };
 
 export default function PQRsPage() {
@@ -280,7 +284,9 @@ export default function PQRsPage() {
                             "rounded-full px-2.5 py-0.5 text-xs font-medium",
                             p.type === "petition" && "bg-blue-100 text-blue-800",
                             p.type === "complaint" && "bg-amber-100 text-amber-800",
-                            p.type === "claim" && "bg-rose-100 text-rose-800"
+                            p.type === "claim" && "bg-rose-100 text-rose-800",
+                            p.type === "suggestion" && "bg-violet-100 text-violet-800",
+                            p.type === "compliment" && "bg-emerald-100 text-emerald-800"
                           )}
                         >
                           {TYPE_LABELS[p.type]}
@@ -458,7 +464,9 @@ export default function PQRsPage() {
                     "rounded-full px-2.5 py-1 text-xs font-medium",
                     detailPqr.type === "petition" && "bg-blue-100 text-blue-800",
                     detailPqr.type === "complaint" && "bg-amber-100 text-amber-800",
-                    detailPqr.type === "claim" && "bg-rose-100 text-rose-800"
+                    detailPqr.type === "claim" && "bg-rose-100 text-rose-800",
+                    detailPqr.type === "suggestion" && "bg-violet-100 text-violet-800",
+                    detailPqr.type === "compliment" && "bg-emerald-100 text-emerald-800"
                   )}
                 >
                   {TYPE_LABELS[detailPqr.type]}

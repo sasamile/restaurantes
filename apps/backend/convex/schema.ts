@@ -321,13 +321,15 @@ export default defineSchema({
     .index("by_tenant_created", ["tenantId", "createdAt"])
     .index("by_conversation_created", ["conversationId", "createdAt"]),
 
-  // PQRs - Peticiones, Quejas, Reclamos
+  // PQRs - Peticiones, Quejas, Reclamos, Sugerencias, Felicitaciones
   pqrs: defineTable({
     tenantId: v.id("tenants"),
     type: v.union(
       v.literal("petition"),
       v.literal("complaint"),
-      v.literal("claim")
+      v.literal("claim"),
+      v.literal("suggestion"),
+      v.literal("compliment")
     ),
     customerName: v.string(), // "Anónimo" si es PQR anónima
     customerEmail: v.optional(v.string()),
