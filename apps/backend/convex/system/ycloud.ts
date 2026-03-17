@@ -366,46 +366,59 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
           // Usar el texto devuelto directamente por el agente
           const directText = typeof agentResult?.text === "string" ? agentResult.text.trim() : "";
 
+          /** Extrae texto plano del contenido de un mensaje del agente */
+          function extractText(content: unknown): string {
+            if (typeof content === "string") return content;
+            if (Array.isArray(content)) {
+              return (content as { type: string; text?: string }[])
+                .filter((p) => p.type === "text")
+                .map((p) => p.text ?? "")
+                .join("");
+            }
+            return String(content ?? "");
+          }
+
+          /** Envía texto a WhatsApp; devuelve false si falla (sin lanzar). */
+          async function trySend(text: string): Promise<boolean> {
+            const t = text.trim();
+            if (!t) return false;
+            try {
+              await ctx.runAction(api.ycloud.sendWhatsAppMessage, {
+                tenantId: args.tenantId,
+                conversationId,
+                content: t,
+              });
+              return true;
+            } catch (sendErr) {
+              console.error("YCloud: error al enviar respuesta", {
+                tenantId: args.tenantId,
+                error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+              });
+              return false;
+            }
+          }
+
           if (directText) {
-            await ctx.runAction(api.ycloud.sendWhatsAppMessage, {
-              tenantId: args.tenantId,
-              conversationId,
-              content: directText,
-            });
+            await trySend(directText);
           } else {
-            // Fallback: tools como resolveConversation guardan su propio mensaje en el hilo.
-            // Si el agente no produjo texto final, enviamos el último mensaje guardado.
+            // Fallback: el agente no produjo texto (solo llamó herramientas).
+            // Buscamos el último mensaje del asistente en el hilo con más capacidad.
             await new Promise((r) => setTimeout(r, 500));
             const messagesAfter: PaginationResult<MessageDoc> =
               await supportAgent.listMessages(ctx, {
                 threadId,
-                paginationOpts: { numItems: 10, cursor: null },
+                paginationOpts: { numItems: 100, cursor: null },
               });
 
-            const lastAssistantMessage = messagesAfter.page.find(
-              (msg) => msg.message?.role === "assistant"
+            // Tomamos el ÚLTIMO mensaje de tipo assistant con texto (no tool_call)
+            const assistantMessages = messagesAfter.page.filter(
+              (m) => m.message?.role === "assistant"
             );
+            const lastAssistant = assistantMessages[assistantMessages.length - 1];
 
-            if (lastAssistantMessage?.message) {
-              const messageContent = lastAssistantMessage.message.content;
-              const messageText: string =
-                typeof messageContent === "string"
-                  ? messageContent
-                  : Array.isArray(messageContent)
-                    ? (messageContent as { type: string; text?: string }[])
-                        .map((part) =>
-                          part.type === "text" ? part.text ?? "" : ""
-                        )
-                        .join("")
-                    : String(messageContent);
-
-              if (messageText.trim()) {
-                await ctx.runAction(api.ycloud.sendWhatsAppMessage, {
-                  tenantId: args.tenantId,
-                  conversationId,
-                  content: messageText,
-                });
-              }
+            if (lastAssistant?.message) {
+              const messageText = extractText(lastAssistant.message.content);
+              await trySend(messageText);
             }
           }
         }
