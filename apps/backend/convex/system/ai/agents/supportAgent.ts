@@ -6,4 +6,8 @@ import { SUPPORT_AGENT_PROMPT } from "../constants";
 export const supportAgent = new Agent(components.agent, {
   chat: openai.chat("gpt-4o"),
   instructions: SUPPORT_AGENT_PROMPT,
+  contextOptions: {
+    recentMessages: 20,
+    excludeToolMessages: true,
+  },
 });

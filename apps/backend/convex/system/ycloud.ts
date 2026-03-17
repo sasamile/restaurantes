@@ -398,15 +398,34 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
             }
           }
 
+          // Detectar tools que ya enviaron su propio mensaje de WhatsApp directamente.
+          // En esos casos la continuación generaría texto redundante o fuera de orden.
+          const calledToolNames = (
+            (agentResult?.toolCalls ?? []) as Array<{ toolName: string }>
+          ).map((tc) => tc.toolName);
+          const SELF_SENDING_TOOLS = new Set([
+            "resolveConversationTool",
+            "escalateConversationTool",
+            "createPQRTool",
+            "createReservationTool",
+            "cancelOrderTool",
+            "updateOrderTool",
+          ]);
+          const toolAlreadySentMessage = calledToolNames.some((name) =>
+            SELF_SENDING_TOOLS.has(name)
+          );
+
           if (directText) {
             await trySend(directText);
+          } else if (toolAlreadySentMessage) {
+            // El tool ya envió la confirmación al cliente — no enviar nada más
           } else {
             // El agente no produjo texto final (solo llamó herramientas y se detuvo).
             // Esto ocurre cuando gpt-4o decide que el resultado de la herramienta
             // es suficiente y no genera texto de continuación.
             //
             // Estrategia en cascada:
-            // 1. Hacer una segunda llamada al agente con prompt de continuación explícito.
+            // 1. Hacer una segunda llamada al agente SIN herramientas (solo genera texto).
             // 2. Si esa también falla o devuelve vacío, buscar en el hilo el último
             //    mensaje de herramienta con contenido útil (ej. searchTool).
             let sent = false;
@@ -420,7 +439,7 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
                     "Continúa la conversación con el cliente. Ya ejecutaste las herramientas necesarias. " +
                     "Haz la siguiente pregunta del flujo activo o entrega la información solicitada. " +
                     "No menciones herramientas ni procesos internos.",
-                  tools: tools as Parameters<typeof supportAgent.generateText>[2]["tools"],
+                  // Sin herramientas: solo genera texto, no puede llamar tools de nuevo
                 }
               );
               const continuationText =
