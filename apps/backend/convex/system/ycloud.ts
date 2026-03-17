@@ -401,34 +401,66 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
           if (directText) {
             await trySend(directText);
           } else {
-            // Fallback: el agente no produjo texto (solo llamó herramientas).
-            // Causas comunes: searchTool ya genera respuesta formateada y gpt-4o
-            // decide que no necesita agregar texto → agentResult.text vacío.
-            // Buscamos en el hilo (de más reciente a más antiguo):
-            //   1. Último mensaje assistant con texto
-            //   2. Último mensaje tool con contenido sustancial (ej. resultado de searchTool)
-            await new Promise((r) => setTimeout(r, 500));
-            const messagesAfter: PaginationResult<MessageDoc> =
-              await supportAgent.listMessages(ctx, {
-                threadId,
-                paginationOpts: { numItems: 100, cursor: null },
-              });
+            // El agente no produjo texto final (solo llamó herramientas y se detuvo).
+            // Esto ocurre cuando gpt-4o decide que el resultado de la herramienta
+            // es suficiente y no genera texto de continuación.
+            //
+            // Estrategia en cascada:
+            // 1. Hacer una segunda llamada al agente con prompt de continuación explícito.
+            // 2. Si esa también falla o devuelve vacío, buscar en el hilo el último
+            //    mensaje de herramienta con contenido útil (ej. searchTool).
+            let sent = false;
 
-            let fallbackText = "";
-            for (let i = messagesAfter.page.length - 1; i >= 0; i--) {
-              const msg = messagesAfter.page[i];
-              const role = msg.message?.role;
-              const content = msg.message?.content;
-              if (role === "assistant") {
-                const t = extractText(content);
-                if (t.trim()) { fallbackText = t; break; }
-              } else if (role === "tool") {
-                // El resultado de searchTool ya es una respuesta formateada para el cliente
-                const t = typeof content === "string" ? content : extractText(content);
-                if (t.trim().length > 20) { fallbackText = t; break; }
+            try {
+              const continuationResult = await supportAgent.generateText(
+                ctx,
+                { threadId },
+                {
+                  prompt:
+                    "Continúa la conversación con el cliente. Ya ejecutaste las herramientas necesarias. " +
+                    "Haz la siguiente pregunta del flujo activo o entrega la información solicitada. " +
+                    "No menciones herramientas ni procesos internos.",
+                  tools: tools as Parameters<typeof supportAgent.generateText>[2]["tools"],
+                }
+              );
+              const continuationText =
+                typeof continuationResult?.text === "string"
+                  ? continuationResult.text.trim()
+                  : "";
+              if (continuationText) {
+                sent = await trySend(continuationText);
+              }
+            } catch (contErr) {
+              console.error("YCloud: segunda llamada al agente falló", {
+                tenantId: args.tenantId,
+                error: contErr instanceof Error ? contErr.message : String(contErr),
+              });
+            }
+
+            if (!sent) {
+              // Último recurso: buscar en el hilo el resultado de searchTool
+              // (que ya es una respuesta formateada para el cliente).
+              await new Promise((r) => setTimeout(r, 300));
+              const messagesAfter: PaginationResult<MessageDoc> =
+                await supportAgent.listMessages(ctx, {
+                  threadId,
+                  paginationOpts: { numItems: 100, cursor: null },
+                });
+
+              for (let i = messagesAfter.page.length - 1; i >= 0; i--) {
+                const msg = messagesAfter.page[i];
+                const role = msg.message?.role;
+                const content = msg.message?.content;
+                if (role === "assistant") {
+                  const t = extractText(content);
+                  if (t.trim()) { await trySend(t); break; }
+                } else if (role === "tool") {
+                  const t = typeof content === "string" ? content : extractText(content);
+                  const isInternal = t.includes("INSTRUCCIÓN:") || t.includes("✅");
+                  if (!isInternal && t.trim().length > 30) { await trySend(t); break; }
+                }
               }
             }
-            await trySend(fallbackText);
           }
         }
       } else {

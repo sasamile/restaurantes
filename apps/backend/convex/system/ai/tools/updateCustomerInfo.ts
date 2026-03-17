@@ -75,7 +75,7 @@ export const updateCustomerInfo = createTool({
         id: customer._id,
         ...updates,
       });
-      return "Información del cliente actualizada correctamente.";
+      return "✅ Datos del cliente actualizados. INSTRUCCIÓN: continúa INMEDIATAMENTE con la siguiente pregunta del flujo activo (no menciones que guardaste datos, solo sigue hablando con el cliente de forma natural).";
     }
 
     await ctx.runMutation(api.customers.create, {
@@ -86,6 +86,6 @@ export const updateCustomerInfo = createTool({
       notes,
       preferences,
     });
-    return "Información del cliente guardada correctamente.";
+    return "✅ Datos del cliente guardados. INSTRUCCIÓN: continúa INMEDIATAMENTE con la siguiente pregunta del flujo activo (no menciones que guardaste datos, solo sigue hablando con el cliente de forma natural).";
   },
 });
