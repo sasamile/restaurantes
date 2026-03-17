@@ -402,7 +402,11 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
             await trySend(directText);
           } else {
             // Fallback: el agente no produjo texto (solo llamó herramientas).
-            // Buscamos el último mensaje del asistente en el hilo con más capacidad.
+            // Causas comunes: searchTool ya genera respuesta formateada y gpt-4o
+            // decide que no necesita agregar texto → agentResult.text vacío.
+            // Buscamos en el hilo (de más reciente a más antiguo):
+            //   1. Último mensaje assistant con texto
+            //   2. Último mensaje tool con contenido sustancial (ej. resultado de searchTool)
             await new Promise((r) => setTimeout(r, 500));
             const messagesAfter: PaginationResult<MessageDoc> =
               await supportAgent.listMessages(ctx, {
@@ -410,16 +414,21 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
                 paginationOpts: { numItems: 100, cursor: null },
               });
 
-            // Tomamos el ÚLTIMO mensaje de tipo assistant con texto (no tool_call)
-            const assistantMessages = messagesAfter.page.filter(
-              (m) => m.message?.role === "assistant"
-            );
-            const lastAssistant = assistantMessages[assistantMessages.length - 1];
-
-            if (lastAssistant?.message) {
-              const messageText = extractText(lastAssistant.message.content);
-              await trySend(messageText);
+            let fallbackText = "";
+            for (let i = messagesAfter.page.length - 1; i >= 0; i--) {
+              const msg = messagesAfter.page[i];
+              const role = msg.message?.role;
+              const content = msg.message?.content;
+              if (role === "assistant") {
+                const t = extractText(content);
+                if (t.trim()) { fallbackText = t; break; }
+              } else if (role === "tool") {
+                // El resultado de searchTool ya es una respuesta formateada para el cliente
+                const t = typeof content === "string" ? content : extractText(content);
+                if (t.trim().length > 20) { fallbackText = t; break; }
+              }
             }
+            await trySend(fallbackText);
           }
         }
       } else {
