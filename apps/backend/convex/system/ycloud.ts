@@ -1,5 +1,9 @@
 import { v } from "convex/values";
-import { internalAction, internalMutation } from "../_generated/server";
+import {
+  internalAction,
+  internalMutation,
+  type ActionCtx,
+} from "../_generated/server";
 import { internal } from "../_generated/api";
 import { api } from "../_generated/api";
 import rag from "./ai/rag";
@@ -25,6 +29,18 @@ import { sendPdf } from "./ai/tools/sendPdf";
 import type { PaginationResult } from "convex/server";
 import type { MessageDoc } from "@convex-dev/agent";
 import { Id } from "../_generated/dataModel";
+import {
+  openClawMaxDialogHintChars,
+  openClawMaxRagChars,
+  openClawMaxTenantPromptChars,
+  restaurantTurnWithOpenClaw,
+  truncateForOpenClaw,
+  truncateHeadTailForOpenClaw,
+} from "./agent/openclawPlanner";
+import {
+  applyOpenClawSideEffect,
+  getVacanciesMarkdownForOpenClaw,
+} from "./agent/openclawSideEffects";
 
 /** Deduplicación: evita procesar el mismo webhook dos veces */
 export const recordProcessedEvent = internalMutation({
@@ -305,6 +321,8 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
           ? `[TU ÚLTIMO MENSAJE AL CLIENTE:]\n"${lastAssistantText.trim()}"\n[El cliente respondió a ese mensaje. Su intención ya está indicada en el texto anterior.]\n\n`
           : "";
 
+        const isVisionMessage = args.mediaType === "image" && args.mediaUrl;
+
         // Pre-búsqueda RAG: inyecta contexto relevante directamente en el prompt.
         // Esto garantiza que el agente tenga la información del negocio sin depender
         // exclusivamente de que llame a searchTool con la query exacta correcta.
@@ -369,6 +387,167 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
           }
         }
 
+        // Ramal OpenClaw: pensamiento + respuesta en el gateway; sin OpenAI / supportAgent.
+        const openclawEnabled = Boolean(process.env.OPENCLAW_AUTH_TOKEN);
+        if (openclawEnabled && args.channel === "whatsapp") {
+          const maxTenant = openClawMaxTenantPromptChars();
+          const maxRag = openClawMaxRagChars();
+          const maxDialog = openClawMaxDialogHintChars();
+          const rawTenantPrompt = tenantPrompt?.prompt?.trim() ?? "";
+          const tenantForGateway =
+            rawTenantPrompt.length <= maxTenant
+              ? rawTenantPrompt
+              : truncateHeadTailForOpenClaw(rawTenantPrompt, maxTenant);
+          const ragBundle = truncateForOpenClaw(preloadedRagContext, maxRag);
+          const custOneLine = truncateForOpenClaw(
+            (customer?.name ? `Nombre cliente: ${customer.name}. ` : "") +
+              customerContext.replace(/\s+/g, " ").trim(),
+            1200
+          );
+          const modulesLine = `Módulos: ${enabledList.length ? enabledList.join(", ") : "ninguno"}. Reservas=${hasReservas}, Pedidos=${hasPedidos}, PQR=${hasPqr}, Vacantes=${hasTrabajaConNosotros}.`;
+
+          const pdfsLine =
+            availablePdfs && availablePdfs.length > 0
+              ? `PDFs (labels exactos): ${availablePdfs
+                  .map((p: { label: string }) => p.label)
+                  .join(", ")}`
+              : "";
+
+          const openClawBase = {
+            clientMessage: clientText,
+            restaurantName: tenant?.name ?? "Restaurante",
+            tenantId: args.tenantId,
+            modulesLine,
+            tenantPromptExcerpt: tenantForGateway,
+            ragKnowledgeExcerpt:
+              ragBundle.trim() ||
+              "(sin fragmentos RAG pre-cargados para este mensaje)",
+            pdfsLine,
+            dateTimeLine: `Fecha de referencia: ${today}, hora aproximada: ${timeHint}.`,
+            customerLine: custOneLine.trim() || "Cliente sin ficha.",
+            lastBotMessage: lastAssistantText.trim() || undefined,
+            lastQuestionContext: truncateForOpenClaw(
+              lastQuestionContext,
+              maxDialog
+            ),
+            imageUrl: isVisionMessage ? args.mediaUrl : undefined,
+            imageContextLine: imageContext,
+          };
+
+          let turn = await restaurantTurnWithOpenClaw(openClawBase);
+
+          if (
+            turn?.side_effect?.kind === "search_job_vacancies" &&
+            hasTrabajaConNosotros
+          ) {
+            const cityArg =
+              turn.side_effect.args?.cityFilter ?? turn.side_effect.args?.city;
+            const cityFilter =
+              typeof cityArg === "string" && cityArg.trim()
+                ? cityArg.trim()
+                : undefined;
+            const vacMd = await getVacanciesMarkdownForOpenClaw(
+              ctx as ActionCtx,
+              args.tenantId,
+              cityFilter
+            );
+            const turn2 = await restaurantTurnWithOpenClaw({
+              ...openClawBase,
+              vacancyLookupFromConvex: vacMd,
+              vacancyRefinementPass: true,
+            });
+            if (turn2) {
+              turn = turn2;
+            } else {
+              console.warn(
+                "YCloud OpenClaw: refinado vacantes falló (sin turno 2); envío listado desde Convex"
+              );
+              turn = {
+                assistant_message: vacMd.trim()
+                  ? `Aquí está la información de vacantes que tenemos registrada:\n\n${vacMd.trim()}`
+                  : (turn.assistant_message?.trim() ??
+                    "No encontré vacantes para ese criterio. ¿Puedes indicar otra ciudad?"),
+                side_effect: null,
+              };
+            }
+          }
+
+          if (turn) {
+            let outbound = (turn.assistant_message ?? "").trim();
+            const fx = await applyOpenClawSideEffect(
+              ctx as ActionCtx,
+              {
+                threadId,
+                tenantId: args.tenantId,
+                conversationId,
+                contactId: args.contactId,
+                customerName: args.customerName,
+                hasReservas,
+              },
+              turn.side_effect ?? null
+            );
+            if (!fx.ok && fx.errorMessage) {
+              outbound = outbound
+                ? `${outbound}\n\n⚠️ ${fx.errorMessage}`
+                : fx.errorMessage;
+            }
+            let toSend = outbound.trim();
+            if (!toSend) {
+              console.warn(
+                "YCloud OpenClaw: assistant_message vacío tras procesar; usando fallback"
+              );
+              toSend =
+                "No pude generar una respuesta ahora. ¿Puedes repetir tu mensaje o escribir al restaurante? 🙏";
+            }
+            try {
+              await ctx.runAction(api.ycloud.sendWhatsAppMessage, {
+                tenantId: args.tenantId,
+                conversationId,
+                content: toSend,
+              });
+            } catch (e) {
+              console.error("YCloud OpenClaw: envío WhatsApp falló", {
+                tenantId: args.tenantId,
+                conversationId,
+                len: toSend.length,
+                preview: toSend.slice(0, 80),
+                error: e instanceof Error ? e.message : String(e),
+              });
+            }
+            try {
+              await saveMessage(ctx, components.agent, {
+                threadId,
+                prompt: clientText,
+              });
+              await saveMessage(ctx, components.agent, {
+                threadId,
+                message: {
+                  role: "assistant",
+                  content: toSend,
+                },
+              });
+            } catch (e) {
+              console.warn("YCloud OpenClaw: saveMessage hilo", e);
+            }
+          } else {
+            try {
+              await ctx.runAction(api.ycloud.sendWhatsAppMessage, {
+                tenantId: args.tenantId,
+                conversationId,
+                content:
+                  "Lo sentimos, el asistente no está disponible en este momento. Intenta de nuevo en unos minutos o escribe al restaurante. 🙏",
+              });
+            } catch {
+              /* ignorar */
+            }
+          }
+
+          await ctx.runMutation(internal.system.conversations.updateLastMessageAt, {
+            threadId,
+          });
+          return;
+        }
+
         const promptWithContext =
           modulesContext +
           customerContext +
@@ -406,7 +585,6 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
         }
 
         let agentResult: Awaited<ReturnType<typeof supportAgent.generateText>> | null = null;
-        const isVisionMessage = args.mediaType === "image" && args.mediaUrl;
         try {
           if (isVisionMessage) {
             agentResult = await supportAgent.generateText(ctx, { threadId }, {

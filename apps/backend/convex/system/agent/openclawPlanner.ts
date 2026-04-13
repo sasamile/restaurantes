@@ -1,0 +1,307 @@
+/**
+ * OpenClaw `/v1/responses`: un solo turno devuelve mensaje para WhatsApp + efecto opcional en Convex.
+ * Sin OpenAI en este camino (cuando OPENCLAW_AUTH_TOKEN está definido en ycloud).
+ *
+ * Env:
+ *   OPENCLAW_GATEWAY_URL
+ *   OPENCLAW_AUTH_TOKEN
+ *   OPENCLAW_RESPONSES_MODEL (default openclaw:main)
+ *   OPENCLAW_REQUEST_TIMEOUT_MS (default 25000)
+ *   OPENCLAW_TENANT_PROMPT_MAX_CHARS (default 120000) — prompt del restaurante casi completo
+ *   OPENCLAW_RAG_MAX_CHARS (default 48000)
+ *   OPENCLAW_DIALOG_HINT_MAX_CHARS (default 8000) — último mensaje del bot + contexto diálogo
+ */
+
+export type RestaurantTurnInput = {
+  clientMessage: string;
+  restaurantName: string;
+  tenantId: string;
+  modulesLine: string;
+  tenantPromptExcerpt: string;
+  ragKnowledgeExcerpt: string;
+  pdfsLine: string;
+  dateTimeLine: string;
+  customerLine: string;
+  lastBotMessage?: string;
+  lastQuestionContext: string;
+  imageUrl?: string;
+  imageContextLine?: string;
+  /** Resultado de búsqueda de vacantes en Convex (segunda pasada al gateway) */
+  vacancyLookupFromConvex?: string;
+  /** true = el modelo solo redacta usando vacancyLookup; side_effect debe ser null salvo PDF/reserva */
+  vacancyRefinementPass?: boolean;
+};
+
+export type OpenClawTurnResult = {
+  assistant_message: string;
+  side_effect?: {
+    kind: string;
+    args?: Record<string, unknown>;
+  } | null;
+};
+
+/** Recorta por el final (p. ej. RAG); marca truncado. */
+export function truncateForOpenClaw(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + "\n…[truncado]";
+}
+
+/**
+ * Si el prompt supera el máximo, conserva inicio + final (los flujos suelen estar
+ * repartidos: reglas al inicio, FAQ/cierre al final).
+ */
+export function truncateHeadTailForOpenClaw(text: string, maxChars: number): string {
+  if (text.length <= maxChars || maxChars < 400) return text;
+  const reserve = 120;
+  const usable = maxChars - reserve;
+  const headLen = Math.ceil(usable * 0.55);
+  const tailLen = usable - headLen;
+  return (
+    text.slice(0, headLen) +
+    `\n…[··· omitidos ${text.length - headLen - tailLen} caracteres del medio ···]\n` +
+    text.slice(-tailLen)
+  );
+}
+
+function envInt(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (!raw?.trim()) return fallback;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+export function openClawMaxTenantPromptChars(): number {
+  return envInt("OPENCLAW_TENANT_PROMPT_MAX_CHARS", 120_000, 8_000, 500_000);
+}
+
+export function openClawMaxRagChars(): number {
+  return envInt("OPENCLAW_RAG_MAX_CHARS", 48_000, 2_000, 200_000);
+}
+
+export function openClawMaxDialogHintChars(): number {
+  return envInt("OPENCLAW_DIALOG_HINT_MAX_CHARS", 8_000, 500, 80_000);
+}
+
+function extractTextFromResponsesBody(body: unknown): string {
+  if (typeof body !== "object" || body === null) return "";
+  const b = body as Record<string, unknown>;
+
+  if (typeof b.output_text === "string" && b.output_text.trim()) {
+    return b.output_text.trim();
+  }
+
+  const tryOutput = (out: unknown): string => {
+    if (!Array.isArray(out)) return "";
+    const parts: string[] = [];
+    for (const item of out) {
+      if (typeof item !== "object" || !item) continue;
+      const o = item as Record<string, unknown>;
+      if (o.type === "message" && Array.isArray(o.content)) {
+        for (const c of o.content) {
+          if (typeof c !== "object" || !c) continue;
+          const c0 = c as Record<string, unknown>;
+          if (c0.type === "output_text" && typeof c0.text === "string") {
+            parts.push(c0.text);
+          } else if (typeof c0.text === "string") {
+            parts.push(c0.text);
+          }
+        }
+      } else if (typeof o.text === "string") {
+        parts.push(o.text);
+      }
+    }
+    return parts.join("\n").trim();
+  };
+
+  const nested = tryOutput(b.output);
+  if (nested) return nested;
+
+  const resp = b.response;
+  if (typeof resp === "object" && resp !== null) {
+    const r = resp as Record<string, unknown>;
+    if (typeof r.output_text === "string" && r.output_text.trim()) {
+      return r.output_text.trim();
+    }
+    const fromR = tryOutput(r.output);
+    if (fromR) return fromR;
+  }
+
+  const choices = b.choices;
+  if (Array.isArray(choices) && choices.length > 0) {
+    const c0 = choices[0] as Record<string, unknown>;
+    const msg = c0.message as Record<string, unknown> | undefined;
+    if (msg && typeof msg.content === "string") return msg.content.trim();
+  }
+
+  if (typeof b.text === "string") return b.text.trim();
+  return "";
+}
+
+function stripMarkdownFence(raw: string): string {
+  let s = raw.trim();
+  const fence = /^```(?:json)?\s*([\s\S]*?)```$/im;
+  const m = s.match(fence);
+  if (m?.[1]) s = m[1].trim();
+  return s;
+}
+
+export function parseTurnFromOrchestratorText(
+  text: string
+): OpenClawTurnResult | null {
+  const cleaned = stripMarkdownFence(text);
+  try {
+    const o = JSON.parse(cleaned) as OpenClawTurnResult;
+    if (o && typeof o.assistant_message === "string" && o.assistant_message.trim()) {
+      return {
+        assistant_message: o.assistant_message.trim(),
+        side_effect: o.side_effect ?? null,
+      };
+    }
+  } catch {
+    // sigue
+  }
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      const o = JSON.parse(cleaned.slice(start, end + 1)) as OpenClawTurnResult;
+      if (o && typeof o.assistant_message === "string" && o.assistant_message.trim()) {
+        return {
+          assistant_message: o.assistant_message.trim(),
+          side_effect: o.side_effect ?? null,
+        };
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function buildTurnOutputContract(refinement: boolean): string {
+  const base = `Responde ÚNICAMENTE con un JSON válido (sin markdown, sin texto extra). Esquema obligatorio:
+{
+  "assistant_message": "mensaje en español para WhatsApp, tono amable y profesional del restaurante",
+  "side_effect": null | {
+    "kind": "create_reservation" | "send_document_pdf" | "escalate_to_human" | "mark_resolved" | "search_job_vacancies",
+    "args": { }
+  }
+}
+Reglas globales:
+- El campo "restaurantPrompt" del payload es el MANUAL OPERATIVO del restaurante (tono, flujos, menús de opciones, PQRS, trabaja con nosotros, etc.). Tiene PRIORIDAD sobre respuestas genéricas.
+- assistant_message: siempre presente. Mensajes cortos (pocas líneas), una pregunta por turno si el manual lo pide.
+- No inventes sedes, cargos ni precios: usa knowledgeBase (RAG) y, si aplica, vacancyLookupFromConvex.
+- side_effect.create_reservation: solo con datos completos. args: customerName?, date (YYYY-MM-DD), time (24h), numberOfPeople|partySize, customerPhone?, tableNumber?, notes?.
+- side_effect.send_document_pdf: args.label = label exacto de "pdfs".
+- side_effect.escalate_to_human | mark_resolved: args {}.
+- side_effect.search_job_vacancies: cuando el manual indique llamar búsqueda de vacantes (p. ej. ya tienes ciudad del cliente). args opcionales: city o cityFilter (nombre ciudad).
+${refinement ? "- Esta es una PASADA DE REFINADO: ya recibiste vacancyLookupFromConvex. Redacta assistant_message usando SOLO esa lista para cargos/sedes. side_effect debe ser null salvo PDF/reserva/escalar/cerrar.\n" : ""}`;
+  return base;
+}
+
+/**
+ * Un solo POST a /v1/responses: pensamiento + redacción en OpenClaw.
+ */
+export async function restaurantTurnWithOpenClaw(
+  input: RestaurantTurnInput
+): Promise<OpenClawTurnResult | null> {
+  const gatewayUrl =
+    process.env.OPENCLAW_GATEWAY_URL ?? "http://127.0.0.1:18789";
+  const authToken = process.env.OPENCLAW_AUTH_TOKEN;
+  const model =
+    process.env.OPENCLAW_RESPONSES_MODEL ?? "openclaw:main";
+  const timeoutMs = Math.min(
+    Math.max(
+      parseInt(process.env.OPENCLAW_REQUEST_TIMEOUT_MS ?? "25000", 10) || 25000,
+      5000
+    ),
+    120000
+  );
+
+  if (!authToken) return null;
+
+  const refinement = Boolean(input.vacancyRefinementPass);
+  const payload = {
+    role: "restaurant_whatsapp_turn",
+    outputContract: buildTurnOutputContract(refinement),
+    restaurant: input.restaurantName,
+    tenantId: input.tenantId,
+    modules: input.modulesLine,
+    dateTime: input.dateTimeLine,
+    customer: input.customerLine,
+    restaurantPrompt: input.tenantPromptExcerpt,
+    knowledgeBase: input.ragKnowledgeExcerpt,
+    pdfs: input.pdfsLine,
+    lastBotMessage: input.lastBotMessage ?? "",
+    dialogHint: input.lastQuestionContext,
+    clientMessage: input.clientMessage,
+    ...(input.vacancyLookupFromConvex?.trim()
+      ? {
+          vacancyLookupFromConvex: input.vacancyLookupFromConvex.trim(),
+        }
+      : {}),
+    imageNote:
+      input.imageUrl?.trim() ||
+      (input.imageContextLine?.trim()
+        ? "El cliente envió una imagen (sin URL en payload)."
+        : ""),
+  };
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const res = await fetch(`${gatewayUrl.replace(/\/$/, "")}/v1/responses`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        input: JSON.stringify(payload),
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      console.warn("openclawPlanner: /v1/responses HTTP error", {
+        status: res.status,
+      });
+      return null;
+    }
+
+    const body = (await res.json()) as unknown;
+    const assistantText = extractTextFromResponsesBody(body);
+    if (!assistantText) {
+      console.warn("openclawPlanner: respuesta sin texto");
+      return null;
+    }
+
+    const turn = parseTurnFromOrchestratorText(assistantText);
+    if (!turn) {
+      console.warn("openclawPlanner: JSON de turno inválido", {
+        preview: assistantText.slice(0, 240),
+      });
+      return null;
+    }
+
+    console.log("openclawPlanner: turno OK", {
+      len: turn.assistant_message.length,
+      side: turn.side_effect?.kind ?? null,
+    });
+    return turn;
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    console.warn(
+      isAbort
+        ? `openclawPlanner: timeout (>${timeoutMs}ms) /v1/responses`
+        : "openclawPlanner: error de red /v1/responses",
+      err instanceof Error ? err.message : err
+    );
+    return null;
+  }
+}

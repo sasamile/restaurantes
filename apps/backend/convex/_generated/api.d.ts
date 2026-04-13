@@ -36,6 +36,8 @@ import type * as reservations from "../reservations.js";
 import type * as rolePermissions from "../rolePermissions.js";
 import type * as s3Logo from "../s3Logo.js";
 import type * as superadmin from "../superadmin.js";
+import type * as system_agent_openclawPlanner from "../system/agent/openclawPlanner.js";
+import type * as system_agent_openclawSideEffects from "../system/agent/openclawSideEffects.js";
 import type * as system_ai_agents_supportAgent from "../system/ai/agents/supportAgent.js";
 import type * as system_ai_constants from "../system/ai/constants.js";
 import type * as system_ai_openaiModels from "../system/ai/openaiModels.js";
@@ -98,6 +100,8 @@ declare const fullApi: ApiFromModules<{
   rolePermissions: typeof rolePermissions;
   s3Logo: typeof s3Logo;
   superadmin: typeof superadmin;
+  "system/agent/openclawPlanner": typeof system_agent_openclawPlanner;
+  "system/agent/openclawSideEffects": typeof system_agent_openclawSideEffects;
   "system/ai/agents/supportAgent": typeof system_ai_agents_supportAgent;
   "system/ai/constants": typeof system_ai_constants;
   "system/ai/openaiModels": typeof system_ai_openaiModels;
