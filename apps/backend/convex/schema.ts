@@ -14,6 +14,11 @@ export default defineSchema({
   tenants: defineTable({
     name: v.string(),
     slug: v.optional(v.string()),
+    /**
+     * Dominio personalizado principal del tenant (ej: alcarbon.com).
+     * Si existe, el login en ese dominio se restringe a usuarios con acceso a este tenant.
+     */
+    customDomain: v.optional(v.string()),
     status: v.union(v.literal("active"), v.literal("trial"), v.literal("cancelled")),
     planId: v.optional(v.id("plans")),
     primaryColor: v.optional(v.string()),

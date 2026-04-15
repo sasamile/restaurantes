@@ -9,7 +9,16 @@ import {
 } from "react";
 import type { Id } from "@/convex";
 
-const TENANT_KEY = "restoadmin_tenant_id";
+export const TENANT_KEY = "restoadmin_tenant_id";
+
+export function setPersistedTenantId(id: Id<"tenants"> | null) {
+  if (typeof window === "undefined") return;
+  if (id) {
+    localStorage.setItem(TENANT_KEY, id);
+  } else {
+    localStorage.removeItem(TENANT_KEY);
+  }
+}
 
 interface TenantContextValue {
   tenantId: Id<"tenants"> | null;
@@ -32,13 +41,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
 
   const setTenantId = useCallback((id: Id<"tenants"> | null) => {
     setTenantIdState(id);
-    if (typeof window !== "undefined") {
-      if (id) {
-        localStorage.setItem(TENANT_KEY, id);
-      } else {
-        localStorage.removeItem(TENANT_KEY);
-      }
-    }
+    setPersistedTenantId(id);
   }, []);
 
   return (

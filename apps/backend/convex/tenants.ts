@@ -1,6 +1,17 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+function normalizeHost(value?: string): string | null {
+  if (!value) return null;
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0]
+    .split(":")[0] || null;
+}
+
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -56,6 +67,7 @@ export const create = mutation({
     logoUrl: v.optional(v.string()),
     address: v.optional(v.string()),
     phone: v.optional(v.string()),
+    customDomain: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -68,6 +80,7 @@ export const create = mutation({
       logoUrl: args.logoUrl,
       address: args.address,
       phone: args.phone,
+      customDomain: normalizeHost(args.customDomain) ?? undefined,
       createdAt: now,
     });
   },
@@ -101,6 +114,7 @@ export const update = mutation({
     logoStorageId: v.optional(v.id("_storage")),
     address: v.optional(v.string()),
     phone: v.optional(v.string()),
+    customDomain: v.optional(v.string()),
     pqrNotificationEmails: v.optional(v.array(v.string())),
     enabledModules: enabledModulesValidator,
   },
@@ -111,11 +125,24 @@ export const update = mutation({
       const url = await ctx.storage.getUrl(logoStorageId);
       if (url) updates.logoUrl = url;
     }
+    if (args.customDomain !== undefined) {
+      updates.customDomain = normalizeHost(args.customDomain) ?? undefined;
+    }
     const filtered = Object.fromEntries(
       Object.entries(updates).filter(([, v]) => v !== undefined)
     );
     await ctx.db.patch(tenantId, filtered);
     return tenantId;
+  },
+});
+
+export const getByHost = query({
+  args: { host: v.string() },
+  handler: async (ctx, args) => {
+    const host = normalizeHost(args.host);
+    if (!host) return null;
+    const tenants = await ctx.db.query("tenants").collect();
+    return tenants.find((tenant) => normalizeHost(tenant.customDomain) === host) ?? null;
   },
 });
 

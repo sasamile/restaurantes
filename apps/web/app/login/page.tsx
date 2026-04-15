@@ -4,11 +4,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { sileo } from "sileo";
 import { Eye, EyeOff } from "lucide-react";
 import { api } from "@/convex";
+import type { Id } from "@/convex";
 import { useAuth } from "@/lib/auth-context";
+import { setPersistedTenantId } from "@/lib/tenant-context";
 import {
   Form,
   FormControl,
@@ -48,6 +50,10 @@ function LoginContent() {
     }
   }, [user, isLoading, searchParams, router]);
   const authLogin = useMutation(api.auth.login);
+  const scopedTenant = useQuery(
+    api.tenants.getByHost,
+    typeof window !== "undefined" ? { host: window.location.hostname } : "skip"
+  );
   const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<LoginValues>({
@@ -82,7 +88,13 @@ function LoginContent() {
     }
 
     try {
-      const user = await authLogin(values);
+      const user = await authLogin({
+        ...values,
+        host: typeof window !== "undefined" ? window.location.hostname : undefined,
+      });
+      if (user.forcedTenantId) {
+        setPersistedTenantId(user.forcedTenantId as Id<"tenants">);
+      }
       login({
         _id: user._id,
         name: user.name,
@@ -111,6 +123,9 @@ function LoginContent() {
         lower.includes("invalid credentials")
       ) {
         friendly = "Credenciales inválidas. Verifica tu correo y contraseña.";
+      } else if (lower.includes("no tienes acceso a este dominio")) {
+        friendly =
+          "Tu usuario no tiene acceso a este restaurante. Inicia sesión con un usuario autorizado.";
       }
 
       sileo.error({
@@ -145,6 +160,11 @@ function LoginContent() {
               <p className="text-sm text-zinc-500 text-center">
                 Ingresa tus credenciales para acceder al panel de restaurantes.
               </p>
+              {scopedTenant && (
+                <p className="text-xs text-zinc-500 text-center">
+                  Dominio activo: <strong>{scopedTenant.name}</strong>
+                </p>
+              )}
             </div>
 
             <Form {...form}>

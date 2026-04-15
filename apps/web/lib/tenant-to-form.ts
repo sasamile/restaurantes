@@ -6,6 +6,7 @@ export function tenantToForm(t: TenantWithPlan): RestauranteFormState {
     name: t.name,
     status: t.status,
     planId: t.planId ?? "",
+    customDomain: t.customDomain ?? "",
     primaryColor: t.primaryColor ?? "#dc2626",
     secondaryColor: t.secondaryColor ?? "#fef2f2",
     logoUrl: t.logoUrl ?? "",

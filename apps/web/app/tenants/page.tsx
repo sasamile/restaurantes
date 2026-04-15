@@ -45,6 +45,10 @@ export default function TenantsPage() {
     api.users.getTenantsForUser,
     user?._id ? { userId: user._id as Id<"users"> } : "skip"
   );
+  const scopedTenant = useQuery(
+    api.tenants.getByHost,
+    typeof window !== "undefined" ? { host: window.location.hostname } : "skip"
+  );
 
   const tenants =
     memberships
@@ -52,10 +56,14 @@ export default function TenantsPage() {
       .filter((t): t is NonNullable<typeof t> => t != null) ?? [];
 
   React.useEffect(() => {
+    if (scopedTenant) {
+      setTenantId(scopedTenant._id);
+      return;
+    }
     if (memberships && memberships.length === 1 && memberships[0]?.tenant) {
       setTenantId(memberships[0].tenant._id);
     }
-  }, [memberships, setTenantId]);
+  }, [memberships, scopedTenant, setTenantId]);
 
   const tenant = useQuery(
     api.tenants.get,
@@ -122,6 +130,16 @@ export default function TenantsPage() {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <p className="text-slate-500">No tienes acceso a ningún restaurante.</p>
+      </div>
+    );
+  }
+
+  if (scopedTenant && !memberships?.some((m) => m.tenantId === scopedTenant._id)) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <p className="text-slate-500">
+          Tu usuario no tiene acceso al restaurante asociado a este dominio.
+        </p>
       </div>
     );
   }

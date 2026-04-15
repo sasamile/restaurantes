@@ -54,6 +54,7 @@ export default function RestauranteDetailPage() {
         name: form.name,
         status: form.status,
         planId: form.planId || undefined,
+        customDomain: form.customDomain.trim() || undefined,
         primaryColor: form.primaryColor || undefined,
         secondaryColor: form.secondaryColor || undefined,
         logoUrl: form.logoUrl || undefined,

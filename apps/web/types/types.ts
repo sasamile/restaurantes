@@ -25,6 +25,7 @@ export interface RestauranteFormState {
   name: string;
   status: TenantStatus;
   planId: Id<"plans"> | "";
+  customDomain: string;
   primaryColor: string;
   secondaryColor: string;
   logoUrl: string;
@@ -37,6 +38,7 @@ export const DEFAULT_RESTAURANTE_FORM: RestauranteFormState = {
   name: "",
   status: "active",
   planId: "",
+  customDomain: "",
   primaryColor: "#dc2626",
   secondaryColor: "#fef2f2",
   logoUrl: "",

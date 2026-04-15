@@ -1,6 +1,17 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+function normalizeHost(value?: string): string | null {
+  if (!value) return null;
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split("/")[0]
+    .split(":")[0] || null;
+}
+
 function randomSalt(): Uint8Array {
   const arr = new Uint8Array(16);
   if (typeof crypto !== "undefined" && crypto.getRandomValues) {
@@ -112,6 +123,7 @@ export const login = mutation({
   args: {
     email: v.string(),
     password: v.string(),
+    host: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await ctx.db
@@ -128,7 +140,28 @@ export const login = mutation({
       throw new Error("Credenciales inválidas");
     }
 
+    const host = normalizeHost(args.host);
+    let forcedTenantId: string | undefined;
+    if (host) {
+      const tenants = await ctx.db.query("tenants").collect();
+      const scopedTenant = tenants.find((tenant) => normalizeHost(tenant.customDomain) === host);
+      if (scopedTenant) {
+        if (!user.isSuperadmin) {
+          const membership = await ctx.db
+            .query("userTenants")
+            .withIndex("by_user_tenant", (q) =>
+              q.eq("userId", user._id).eq("tenantId", scopedTenant._id)
+            )
+            .unique();
+          if (!membership) {
+            throw new Error("No tienes acceso a este dominio");
+          }
+        }
+        forcedTenantId = scopedTenant._id;
+      }
+    }
+
     const { passwordHash: _, ...safe } = user;
-    return safe;
+    return { ...safe, forcedTenantId };
   },
 });

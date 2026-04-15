@@ -7,6 +7,7 @@ import type { TenantStatus } from "@/types/types";
 type TenantForGeneral = {
   name: string;
   slug?: string;
+  customDomain?: string | null;
   planName: string | null;
   status: TenantStatus;
   address?: string | null;
@@ -44,6 +45,12 @@ export function GeneralTab({
             <div>
               <dt className="text-[#64748B]">Teléfono</dt>
               <dd className="font-medium text-[#334155]">{tenant.phone}</dd>
+            </div>
+          )}
+          {tenant.customDomain && (
+            <div>
+              <dt className="text-[#64748B]">Dominio</dt>
+              <dd className="font-medium text-[#334155]">{tenant.customDomain}</dd>
             </div>
           )}
         </dl>

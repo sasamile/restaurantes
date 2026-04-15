@@ -328,21 +328,25 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
         // exclusivamente de que llame a searchTool con la query exacta correcta.
         // El agente usa esta información como fuente de verdad primaria.
         let preloadedRagContext = "";
-        const isLocationQuery = /(sede|local|horario|direcci[oó]n|ubicaci[oó]n|domicilio|barrio|ciudad)/i.test(clientText);
-        const isFoodQuery = /(men[uú]|precio|carta|plato|comida|comer|venden|tienen|ofrec|sirven|preparan|sopa|hamburguesa|carne|pollo|pescado|cerdo|ensalada|bebida|jugo|limonada|postre|entrada|acompa[ñn]|combo|bandeja|arroz|costilla|churrasco|solomito|infantil|vegeta)/i.test(clientText);
-        const isInfoQuery = isLocationQuery || isFoodQuery;
-        if (isInfoQuery) {
+        const isLocationQuery = /(sede|local|horario|direcci[oó]n|ubicaci[oó]n|domicilio|barrio|ciudad|centro\s*comercial|sucursal|d[oó]nde\s+(est[aá]|queda|encuentr)|cerca|cercan[ií]a|medell[ií]n|bogot[aá]|barranquilla|rionegro|villavicencio|urab[aá]|bello|envigado|itag[uü][ií]?|sabaneta|guayabal|poblado|laureles|mayorca|oviedo|tesoro|santaf[eé]|titan|unicentro|viva\s)/i.test(clientText);
+        const isFoodQuery = /(men[uú]|precio|carta|plato|comida|comer|venden|tienen|ofrec|sirven|preparan|sopa|hamburguesa|carne|pollo|pescado|cerdo|ensalada|bebida|jugo|limonada|postre|entrada|acompa[ñn]|combo|bandeja|arroz|costilla|churrasco|solomito|infantil|vegeta|rappi|ifood|delivery|pedir\s|pedido)/i.test(clientText);
+        const lastMsgAsksLocation = /(ciudad|barrio|sede.*cercan|direcci[oó]n|ubicaci[oó]n|indicar?\s.*ciudad)/i.test(lastAssistantText);
+        const isTrivialMessage = /^(hola|ok|s[ií]|no|gracias|buenas?|buenos?\s*d[ií]as?|buenas?\s*tardes?|buenas?\s*noches?|[1-9]|listo|vale|claro|dale|perfecto|genial|exacto|así\s*es|correcto|entendido|chao|adios|adi[oó]s|bye)$/i.test(clientText.trim());
+        const shouldPreloadRag = isLocationQuery || isFoodQuery || lastMsgAsksLocation || (!isTrivialMessage && clientText.trim().length > 8);
+        if (shouldPreloadRag) {
           try {
             const ragQueries: string[] = [clientText];
 
-            if (isLocationQuery) {
-              const cityMatch = clientText.match(/(medell[ií]n|bogot[aá]|barranquilla|rionegro|villavicencio|urab[aá]|bello|envigado|itagü?i|sabaneta)/i);
+            if (isLocationQuery || lastMsgAsksLocation) {
+              const cityMatch = clientText.match(/(medell[ií]n|bogot[aá]|barranquilla|rionegro|villavicencio|urab[aá]|bello|envigado|itag[uü][ií]?|sabaneta)/i);
               if (cityMatch) {
                 const normalized = cityMatch[1].toUpperCase().replace(/[ÍÌÎÏ]/g,"I").replace(/[ÁÀÂÄ]/g,"A").replace(/[ÉÈÊË]/g,"E").replace(/[ÚÙÛÜ]/g,"U");
                 ragQueries.push(`LOCALES ${normalized} horarios direcciones`);
                 ragQueries.push(`UBICACIONES ${normalized}`);
+                ragQueries.push(`BARRIOS ${normalized} sedes locales ubicaciones`);
               } else {
                 ragQueries.push("LOCALES horarios direcciones sedes");
+                ragQueries.push("ubicaciones barrios sedes locales");
               }
             }
 

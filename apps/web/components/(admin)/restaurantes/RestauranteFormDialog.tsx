@@ -144,6 +144,23 @@ export function RestauranteFormDialog({
               <option value="cancelled">Cancelado</option>
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-[#0F172A]">
+              Dominio personalizado (opcional)
+            </label>
+            <Input
+              type="text"
+              value={form.customDomain}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, customDomain: e.target.value }))
+              }
+              placeholder="alcarbon.com"
+              className="mt-1 border-[#E2E8F0] focus:border-[#EF4444] focus:ring-[#EF4444]/20"
+            />
+            <p className="mt-1 text-xs text-[#64748B]">
+              Si lo configuras, ese dominio abrirá este restaurante al iniciar sesión.
+            </p>
+          </div>
           <div className="space-y-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4">
             <p className="text-sm font-medium text-[#0F172A]">
               Logo del restaurante

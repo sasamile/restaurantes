@@ -13,6 +13,7 @@ export type TenantWithPlan = {
   name: string;
   status: TenantStatus;
   planId: Id<"plans"> | null;
+  customDomain?: string | null;
   planName: string | null;
   primaryColor: string | null;
   secondaryColor: string | null;
@@ -81,6 +82,7 @@ export function useRestaurantesPage() {
       name: t.name,
       status: t.status,
       planId: t.planId ?? "",
+      customDomain: t.customDomain ?? "",
       primaryColor: t.primaryColor ?? "#dc2626",
       secondaryColor: t.secondaryColor ?? "#fef2f2",
       logoUrl: t.logoUrl ?? "",
@@ -101,6 +103,7 @@ export function useRestaurantesPage() {
           name: form.name,
           status: form.status,
           planId: form.planId || undefined,
+          customDomain: form.customDomain.trim() || undefined,
           primaryColor: form.primaryColor || undefined,
           secondaryColor: form.secondaryColor || undefined,
           logoUrl: form.logoUrl || undefined,
@@ -112,6 +115,7 @@ export function useRestaurantesPage() {
           name: form.name,
           status: form.status,
           planId: form.planId || undefined,
+          customDomain: form.customDomain.trim() || undefined,
           primaryColor: form.primaryColor || undefined,
           secondaryColor: form.secondaryColor || undefined,
           logoUrl: form.logoUrl || undefined,
