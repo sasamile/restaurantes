@@ -75,6 +75,32 @@ export const getLastOutboundMessage = internalQuery({
   },
 });
 
+/**
+ * Devuelve los últimos N mensajes de la conversación (ambas direcciones),
+ * ordenados cronológicamente. Usado para construir historial multi-turno
+ * que evita que el modelo pierda contexto y repita preguntas.
+ */
+export const getRecentMessages = internalQuery({
+  args: {
+    conversationId: v.id("conversations"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 20;
+    const msgs = await ctx.db
+      .query("messages")
+      .withIndex("by_conversation", (q) =>
+        q.eq("conversationId", args.conversationId)
+      )
+      .order("desc")
+      .take(limit);
+    return msgs.reverse().map((m) => ({
+      direction: m.direction,
+      content: m.content,
+    }));
+  },
+});
+
 /** Rellena lastMessagePreview en conversaciones existentes (ejecutar una vez). */
 function buildPreview(msg: { content: string; mediaType?: string }) {
   if (msg.mediaType === "image") return "Imagen";

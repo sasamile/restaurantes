@@ -260,6 +260,7 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
         // porque listMessages() pagina desde el más antiguo y en conversaciones
         // largas el último mensaje real queda fuera de la primera página.
         let lastAssistantText = "";
+        let recentDialogHistory = "";
         try {
           const lastOutbound = await ctx.runQuery(
             internal.messages.getLastOutboundMessage,
@@ -268,6 +269,31 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
           if (lastOutbound) lastAssistantText = lastOutbound;
         } catch {
           // continúa sin contexto adicional
+        }
+
+        // Historial multi-turno: evita que el modelo pierda info dada
+        // por el cliente en turnos anteriores (ej. descripción de queja en PQRS).
+        try {
+          const recentMsgs = await ctx.runQuery(
+            internal.messages.getRecentMessages,
+            { conversationId, limit: 20 }
+          );
+          if (recentMsgs && recentMsgs.length > 1) {
+            const lines: string[] = [];
+            for (const m of recentMsgs) {
+              const role = m.direction === "INBOUND" ? "Cliente" : "Bot";
+              const text = m.content.trim().slice(0, 500);
+              if (text) lines.push(`${role}: ${text}`);
+            }
+            if (lines.length > 1) {
+              recentDialogHistory =
+                `[HISTORIAL RECIENTE DE LA CONVERSACIÓN — NO repitas preguntas si el cliente ya respondió]\n` +
+                lines.join("\n") +
+                `\n[Fin historial. El siguiente mensaje del cliente es el más reciente.]\n\n`;
+            }
+          }
+        } catch {
+          // continúa sin historial — el fallback es lastBotMessage
         }
 
         // Pre-interpretar respuestas numéricas (1-5) para eliminar ambigüedad.
@@ -315,9 +341,11 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
           ? resolveNumericResponse(resolvedText, lastAssistantText)
           : resolvedText;
 
-        const lastQuestionContext = lastAssistantText.trim()
-          ? `[TU ÚLTIMO MENSAJE AL CLIENTE:]\n"${lastAssistantText.trim()}"\n[El cliente respondió a ese mensaje. Su intención ya está indicada en el texto anterior.]\n\n`
-          : "";
+        const lastQuestionContext = recentDialogHistory
+          ? recentDialogHistory
+          : lastAssistantText.trim()
+            ? `[TU ÚLTIMO MENSAJE AL CLIENTE:]\n"${lastAssistantText.trim()}"\n[El cliente respondió a ese mensaje. Su intención ya está indicada en el texto anterior.]\n\n`
+            : "";
 
         const isVisionMessage = args.mediaType === "image" && args.mediaUrl;
 
