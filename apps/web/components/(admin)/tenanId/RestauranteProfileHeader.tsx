@@ -2,6 +2,7 @@
 
 import { MapPin, Phone, Mail, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { proxiedTenantAssetUrl } from "@/lib/tenant-asset-url";
 import { STATUS_LABELS } from "@/constants";
 import type { TenantStatus } from "@/types/types";
 
@@ -37,7 +38,7 @@ export function RestauranteProfileHeader({
           >
             {tenant.logoUrl ? (
               <img
-                src={tenant.logoUrl}
+                src={proxiedTenantAssetUrl(tenant.logoUrl) ?? tenant.logoUrl}
                 alt=""
                 className="h-full w-full object-cover"
               />

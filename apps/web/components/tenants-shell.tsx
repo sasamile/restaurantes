@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Id } from "@/convex";
+import { proxiedTenantAssetUrl } from "@/lib/tenant-asset-url";
 
 interface TenantsShellProps {
   children: ReactNode;
@@ -232,7 +233,7 @@ export function TenantsShell({ children }: TenantsShellProps) {
               <span className="material-symbols-outlined text-2xl text-slate-400">restaurant</span>
             ) : displayTenant?.logoUrl ? (
               <img
-                src={displayTenant.logoUrl}
+                src={proxiedTenantAssetUrl(displayTenant.logoUrl) ?? displayTenant.logoUrl}
                 alt={displayTenant?.name ?? "Logo"}
                 className="size-full object-contain p-1 rounded-xl"
               />

@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RestauranteFormState } from "@/types/types";
+import { proxiedTenantAssetUrl } from "@/lib/tenant-asset-url";
 
 interface Plan {
   _id: Id<"plans">;
@@ -178,7 +179,7 @@ export function RestauranteFormDialog({
               <div className="flex flex-wrap items-center gap-3">
                 <div className="relative h-16 w-16 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white">
                   <Image
-                    src={form.logoUrl}
+                    src={proxiedTenantAssetUrl(form.logoUrl) ?? form.logoUrl}
                     alt="Logo"
                     fill
                     className="object-contain"

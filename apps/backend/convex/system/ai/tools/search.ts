@@ -27,6 +27,13 @@ export const search = createTool({
       return "Falta el ID del hilo";
     }
 
+    // En modo OpenClaw-only el conocimiento ya va inyectado como texto plano.
+    // No se necesitan embeddings ni interpretación con OpenAI.
+    const openclawOnly = Boolean(process.env.OPENCLAW_AUTH_TOKEN);
+    if (openclawOnly) {
+      return "⚠️ INSTRUCCIÓN INTERNA: La búsqueda RAG por embeddings no está disponible. Usa el bloque [BASE DE CONOCIMIENTO] que ya tienes en el contexto para responder.";
+    }
+
     const conversation = await ctx.runQuery(
       internal.system.conversations.getByThreadId,
       { threadId: ctx.threadId }
@@ -38,8 +45,6 @@ export const search = createTool({
 
     const tenantId = conversation.tenantId as string;
 
-    // Genera variantes de la query para aumentar la probabilidad de match en el RAG.
-    // El contenido suele estar en formato de tabla con encabezados como "LOCALES", "HORARIOS", "UBICACIONES".
     function buildQueryVariants(query: string): string[] {
       const variants: string[] = [query];
       const q = query.toLowerCase();

@@ -18,9 +18,24 @@ export const fetchFileContent = internalAction({
     const res = await fetch(url);
     if (!res.ok) return "";
 
-    const contentType = res.headers.get("content-type") ?? "";
+    const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
     const buffer = await res.arrayBuffer();
     const uint8 = new Uint8Array(buffer);
+    const header = Buffer.from(uint8.slice(0, 8)).toString("utf8");
+
+    const tryDecodeText = (): string => {
+      try {
+        const decoded = new TextDecoder().decode(uint8).trim();
+        if (!decoded) return "";
+        // Heurística simple: si parece texto legible, aceptarlo.
+        const sample = decoded.slice(0, 1000);
+        const controlChars = (sample.match(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g) ?? []).length;
+        const ratio = controlChars / Math.max(sample.length, 1);
+        return ratio < 0.05 ? decoded : "";
+      } catch {
+        return "";
+      }
+    };
 
     if (
       contentType.includes("text/plain") ||
@@ -28,15 +43,16 @@ export const fetchFileContent = internalAction({
       contentType.includes("text/csv") ||
       contentType.includes("application/json")
     ) {
-      return new TextDecoder().decode(uint8);
+      return tryDecodeText();
     }
 
-    if (contentType.includes("application/pdf")) {
+    if (contentType.includes("application/pdf") || header.startsWith("%PDF")) {
       try {
         const data = await pdfParse(Buffer.from(uint8));
         return data.text?.trim() ?? "";
       } catch {
-        return "[Error al extraer texto del PDF]";
+        // Fallback: intentar lectura como texto plano.
+        return tryDecodeText() || "[Error al extraer texto del PDF]";
       }
     }
 
@@ -44,16 +60,20 @@ export const fetchFileContent = internalAction({
       contentType.includes(
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       ) ||
-      contentType.includes("application/msword")
+      contentType.includes("application/msword") ||
+      header.startsWith("PK")
     ) {
       try {
         const result = await mammoth.extractRawText({ arrayBuffer: buffer });
-        return result.value?.trim() ?? "";
+        const docText = result.value?.trim() ?? "";
+        if (docText) return docText;
+        return tryDecodeText();
       } catch {
-        return "[Error al extraer texto del documento Word]";
+        return tryDecodeText() || "[Error al extraer texto del documento Word]";
       }
     }
 
-    return "";
+    // Último recurso para content-types genéricos (ej: application/octet-stream)
+    return tryDecodeText();
   },
 });

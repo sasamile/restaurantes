@@ -208,8 +208,10 @@ Reglas globales:
 - "restaurantPrompt" es el MANUAL OPERATIVO del restaurante. Tiene PRIORIDAD ABSOLUTA sobre respuestas genéricas. Sigue sus flujos, tonos y pasos al pie de la letra.
 - assistant_message: siempre presente. Mensajes cortos, una pregunta por turno si el manual lo pide.
 - No inventes sedes, cargos ni precios: usa knowledgeBase (RAG).
+- SEDES/UBICACIONES: el campo "knowledgeBase" YA contiene toda la información de sedes, ciudades y barrios. Si el cliente menciona una ciudad (ej. Villavicencio, Bogotá, Medellín, Barranquilla), BUSCA en todo el texto de knowledgeBase antes de decir que no tienes datos. La información puede estar en cualquier sección (ubicaciones_completo, LOCALES, BARRIOS). NUNCA digas "no tengo esa información" si el knowledgeBase contiene datos de esa ciudad.
 - PQRS: cuando el manual diga "llama a createPQRTool" o el cliente haya dado tipo + asunto + descripción, emite side_effect create_pqr. NO sigas preguntando si ya tienes los 3 datos. El "type" se infiere del contexto (queja sobre comida/atención = complaint; sugerencia = suggestion; etc.). El "subject" es un resumen breve (~10 palabras). La "description" es lo que contó el cliente.
 - Reservas: solo con datos completos (nombre, fecha, hora, personas).
+- CONTEXTO DE CONVERSACIÓN: si dialogHint muestra que el cliente ya dio un barrio o ciudad en turnos anteriores, úsalo para enriquecer la respuesta sin volver a pedirlo.
 ${refinement ? "- PASADA DE REFINADO: ya recibiste vacancyLookupFromConvex. Redacta usando SOLO esa lista. side_effect null salvo PDF/reserva/escalar/cerrar.\n" : ""}`;
   return base;
 }

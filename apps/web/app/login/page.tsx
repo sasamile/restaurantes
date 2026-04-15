@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense, useMemo } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation } from "convex/react";
 import { sileo } from "sileo";
 import { Eye, EyeOff } from "lucide-react";
 import { api } from "@/convex";
@@ -43,7 +43,7 @@ type LoginBranding = {
 const DEFAULT_BRANDING: LoginBranding = {
   logoSrc: "/logos/mezzi.svg",
   logoAlt: "Logo Mezzi",
-  subtitle: "Bienvenido a Mezzi. Inicia sesión para administrar tu restaurante.",
+  subtitle: "Ingresa tus credenciales para continuar.",
   sideImageSrc: "/login.png",
   sideImageAlt: "Imagen de acceso Mezzi",
 };
@@ -52,7 +52,7 @@ const HOST_BRANDING: Record<string, LoginBranding> = {
   "gestia.com.co": {
     logoSrc: "/logos/logoalcarbo.svg",
     logoAlt: "Logo Al Carbón",
-    subtitle: "Ingresa tus credenciales para acceder al panel de restaurantes.",
+    subtitle: "Ingresa tus credenciales para continuar.",
     sideImageSrc:
       "https://media-cdn.tripadvisor.com/media/photo-m/1280/14/40/1e/7e/vista-del-restaurante.jpg",
     sideImageAlt: "Vista del restaurante",
@@ -77,10 +77,6 @@ function LoginContent() {
     }
   }, [user, isLoading, searchParams, router]);
   const authLogin = useMutation(api.auth.login);
-  const scopedTenant = useQuery(
-    api.tenants.getByHost,
-    typeof window !== "undefined" ? { host: window.location.hostname } : "skip"
-  );
   const [showPassword, setShowPassword] = useState(false);
   const hostname =
     typeof window !== "undefined"
@@ -195,11 +191,6 @@ function LoginContent() {
               <p className="text-sm text-zinc-500 text-center">
                 {branding.subtitle}
               </p>
-              {scopedTenant && (
-                <p className="text-xs text-zinc-500 text-center">
-                  Dominio activo: <strong>{scopedTenant.name}</strong>
-                </p>
-              )}
             </div>
 
             <Form {...form}>

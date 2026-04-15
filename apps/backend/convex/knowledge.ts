@@ -119,22 +119,44 @@ export const remove = mutation({
   },
 });
 
-/** Indexa un knowledgeItem en RAG para que el bot pueda buscarlo. */
+/** Indexa un knowledgeItem en RAG para que el bot pueda buscarlo.
+ *  Si OpenClaw es el único modelo (sin OPENAI_API_KEY válida), se omite
+ *  la indexación con embeddings — el conocimiento se carga como texto plano. */
 export const indexInRag = internalAction({
   args: { id: v.id("knowledgeItems") },
   handler: async (ctx, args) => {
     const item = await ctx.runQuery(internal.knowledge.getForRag, { id: args.id });
     if (!item) return;
 
-    let text: string;
+    // Si el item viene de archivo, extraer texto y guardarlo en `content`
+    // para que la carga directa (OpenClaw-only) funcione sin depender de fetchFileContent en runtime.
+    let extractedText = "";
     if (item.storageId) {
-      const content = await ctx.runAction(internal.knowledgeFileParsing.fetchFileContent, {
+      extractedText = await ctx.runAction(internal.knowledgeFileParsing.fetchFileContent, {
         storageId: item.storageId,
       });
-      text = `${item.title}\n\n${content || "(archivo vacío o no soportado)"}`;
-    } else {
-      text = `${item.title}\n\n${item.content}`;
+      if (extractedText && !item.content?.trim()) {
+        await ctx.runMutation(internal.knowledge.patchContent, {
+          id: args.id,
+          content: extractedText,
+        });
+        console.log("knowledge: content extraído y guardado desde archivo", {
+          id: args.id,
+          title: item.title,
+          chars: extractedText.length,
+        });
+      }
     }
+
+    const openclawOnly = Boolean(process.env.OPENCLAW_AUTH_TOKEN);
+    if (openclawOnly) {
+      console.log("knowledge: embeddings omitidos (modo OpenClaw-only)", { id: args.id });
+      return;
+    }
+
+    const text = item.storageId
+      ? `${item.title}\n\n${extractedText || "(archivo vacío o no soportado)"}`
+      : `${item.title}\n\n${item.content}`;
     const key = `knowledge_${args.id}`;
 
     if (item.ragEntryId) {
@@ -145,18 +167,22 @@ export const indexInRag = internalAction({
       }
     }
 
-    const { entryId } = await rag.add(ctx, {
-      namespace: item.tenantId,
-      text,
-      key,
-      title: item.title,
-      metadata: { source: "knowledgeItems", id: args.id },
-    });
+    try {
+      const { entryId } = await rag.add(ctx, {
+        namespace: item.tenantId,
+        text,
+        key,
+        title: item.title,
+        metadata: { source: "knowledgeItems", id: args.id },
+      });
 
-    await ctx.runMutation(internal.knowledge.setRagEntryId, {
-      id: args.id,
-      ragEntryId: entryId,
-    });
+      await ctx.runMutation(internal.knowledge.setRagEntryId, {
+        id: args.id,
+        ragEntryId: entryId,
+      });
+    } catch (err) {
+      console.warn("knowledge: rag.add falló (embeddings)", err instanceof Error ? err.message : err);
+    }
   },
 });
 
@@ -186,5 +212,59 @@ export const setRagEntryId = internalMutation({
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.id, { ragEntryId: args.ragEntryId });
+  },
+});
+
+/** Re-extrae texto de todos los items con storageId y content vacío.
+ *  Ejecutar una vez desde el dashboard de Convex para migrar items existentes. */
+export const backfillFileContent = internalAction({
+  args: {},
+  handler: async (ctx) => {
+    const items = await ctx.runQuery(internal.knowledge.listAllWithEmptyContent, {});
+    console.log("backfillFileContent: items pendientes", items.length);
+    let filled = 0;
+    for (const item of items) {
+      if (!item.storageId) continue;
+      try {
+        const text = await ctx.runAction(internal.knowledgeFileParsing.fetchFileContent, {
+          storageId: item.storageId,
+        });
+        if (text.trim()) {
+          await ctx.runMutation(internal.knowledge.patchContent, {
+            id: item._id,
+            content: text,
+          });
+          filled++;
+          console.log("backfillFileContent: ok", { title: item.title, chars: text.length });
+        } else {
+          console.warn("backfillFileContent: vacío", { title: item.title });
+        }
+      } catch (err) {
+        console.warn("backfillFileContent: error", {
+          title: item.title,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    console.log("backfillFileContent: completado", { total: items.length, filled });
+  },
+});
+
+export const listAllWithEmptyContent = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("knowledgeItems").collect();
+    return all.filter((i) => !i.content?.trim() && i.storageId);
+  },
+});
+
+/** Guarda el texto extraído de un archivo en el campo content del knowledgeItem. */
+export const patchContent = internalMutation({
+  args: {
+    id: v.id("knowledgeItems"),
+    content: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, { content: args.content, updatedAt: Date.now() });
   },
 });

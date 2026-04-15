@@ -30,6 +30,31 @@ export const ask = action({
 
     await ctx.runMutation(api.learning.useCredit, { tenantId: args.tenantId });
 
+    const openclawOnly = Boolean(process.env.OPENCLAW_AUTH_TOKEN);
+
+    // Modo OpenClaw-only: cargar conocimiento como texto plano (sin embeddings)
+    if (openclawOnly) {
+      const knowledgeItems = await ctx.runQuery(api.knowledge.listByTenant, {
+        tenantId: args.tenantId,
+      });
+      let knowledgeText = "";
+      const titles: string[] = [];
+      for (const item of knowledgeItems ?? []) {
+        const text = (item.content ?? "").trim();
+        if (!text) continue;
+        titles.push(item.title ?? "");
+        knowledgeText += `### ${item.title}\n${text}\n\n`;
+        if (knowledgeText.length > 30_000) break;
+      }
+      return {
+        text: knowledgeText
+          ? `Información encontrada:\n\n${knowledgeText}`
+          : "No se encontró información relevante en la base de conocimiento.",
+        confidence: (titles.length >= 2 ? "high" : titles.length === 1 ? "medium" : "low") as Confidence,
+        sources: titles.filter(Boolean),
+      };
+    }
+
     const searchResult = await rag.search(ctx, {
       namespace: args.tenantId,
       query: q,

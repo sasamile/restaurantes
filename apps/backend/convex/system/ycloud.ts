@@ -205,49 +205,47 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
         const today = now.toISOString().slice(0, 10);
         const timeHint = now.toTimeString().slice(0, 5);
         const dateTimeContext = `[Fecha y hora actual para interpretar "hoy" o "mañana": ${today}, aprox. ${timeHint}. Usa esta fecha cuando el cliente diga "hoy" o "para hoy.]\n\n`;
-        // Transcribir audio con Whisper si aplica
+        // Transcripción de audio: solo si hay OPENAI_API_KEY disponible (Whisper).
+        // Con OpenClaw como único modelo, se marca el audio para que OpenClaw lo maneje.
         let resolvedText = args.text;
+        const openaiKey = process.env.OPENAI_API_KEY?.trim();
+        // Si OpenClaw está activo, siempre usa carga directa de conocimiento.
+        // La key de OpenAI puede existir (por Whisper u otros), pero para RAG/LLM
+        // la prioridad es OpenClaw — no se intenta embeddings de OpenAI.
+        const openclawOnly = Boolean(process.env.OPENCLAW_AUTH_TOKEN);
         if (args.mediaType === "audio" && args.mediaUrl) {
-          try {
-            const audioRes = await fetch(args.mediaUrl);
-            if (audioRes.ok) {
-              const audioBuffer = await audioRes.arrayBuffer();
-              const formData = new FormData();
-              formData.append(
-                "file",
-                new Blob([audioBuffer], { type: "audio/ogg" }),
-                "audio.ogg"
-              );
-              formData.append("model", "whisper-1");
-              formData.append("language", "es");
-              const whisperRes = await fetch(
-                "https://api.openai.com/v1/audio/transcriptions",
-                {
+          if (openclawOnly) {
+            // OpenClaw activo: no se usa Whisper (OpenAI). El audio llega sin transcripción.
+            resolvedText = "[AUDIO SIN TRANSCRIPCIÓN]";
+          } else if (openaiKey) {
+            try {
+              const audioRes = await fetch(args.mediaUrl);
+              if (audioRes.ok) {
+                const audioBuffer = await audioRes.arrayBuffer();
+                const formData = new FormData();
+                formData.append("file", new Blob([audioBuffer], { type: "audio/ogg" }), "audio.ogg");
+                formData.append("model", "whisper-1");
+                formData.append("language", "es");
+                const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
                   method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-                  },
+                  headers: { Authorization: `Bearer ${openaiKey}` },
                   body: formData,
-                }
-              );
-              if (whisperRes.ok) {
-                const whisperData = (await whisperRes.json()) as {
-                  text?: string;
-                };
-                if (whisperData.text?.trim()) {
-                  resolvedText = `[AUDIO TRANSCRITO: "${whisperData.text.trim()}"]`;
+                });
+                if (whisperRes.ok) {
+                  const whisperData = (await whisperRes.json()) as { text?: string };
+                  resolvedText = whisperData.text?.trim()
+                    ? `[AUDIO TRANSCRITO: "${whisperData.text.trim()}"]`
+                    : "[AUDIO SIN TRANSCRIPCIÓN]";
                 } else {
                   resolvedText = "[AUDIO SIN TRANSCRIPCIÓN]";
                 }
               } else {
                 resolvedText = "[AUDIO SIN TRANSCRIPCIÓN]";
               }
-            } else {
+            } catch (err) {
+              console.warn("YCloud: transcripción de audio fallida", err);
               resolvedText = "[AUDIO SIN TRANSCRIPCIÓN]";
             }
-          } catch (err) {
-            console.warn("YCloud: transcripción de audio fallida", err);
-            resolvedText = "[AUDIO SIN TRANSCRIPCIÓN]";
           }
         }
 
@@ -333,61 +331,160 @@ ${customer.preferences ? `Preferencias: ${customer.preferences}` : ""}
         const lastMsgAsksLocation = /(ciudad|barrio|sede.*cercan|direcci[oó]n|ubicaci[oó]n|indicar?\s.*ciudad)/i.test(lastAssistantText);
         const isTrivialMessage = /^(hola|ok|s[ií]|no|gracias|buenas?|buenos?\s*d[ií]as?|buenas?\s*tardes?|buenas?\s*noches?|[1-9]|listo|vale|claro|dale|perfecto|genial|exacto|así\s*es|correcto|entendido|chao|adios|adi[oó]s|bye)$/i.test(clientText.trim());
         const shouldPreloadRag = isLocationQuery || isFoodQuery || lastMsgAsksLocation || (!isTrivialMessage && clientText.trim().length > 8);
+
+        /** Normaliza nombre de ciudad para queries RAG */
+        function normalizeCityKey(raw: string): string {
+          return raw.toUpperCase()
+            .replace(/[ÍÌÎÏ]/g, "I").replace(/[ÁÀÂÄ]/g, "A")
+            .replace(/[ÉÈÊË]/g, "E").replace(/[ÚÙÛÜ]/g, "U")
+            .replace(/Ñ/g, "N");
+        }
+
+        const CITY_REGEX = /(medell[ií]n|bogot[aá]|barranquilla|rionegro|villavicencio|urab[aá]|bello|envigado|itag[uü][ií]?|sabaneta)/i;
+
         if (shouldPreloadRag) {
-          try {
-            const ragQueries: string[] = [clientText];
-
-            if (isLocationQuery || lastMsgAsksLocation) {
-              const cityMatch = clientText.match(/(medell[ií]n|bogot[aá]|barranquilla|rionegro|villavicencio|urab[aá]|bello|envigado|itag[uü][ií]?|sabaneta)/i);
-              if (cityMatch) {
-                const normalized = cityMatch[1].toUpperCase().replace(/[ÍÌÎÏ]/g,"I").replace(/[ÁÀÂÄ]/g,"A").replace(/[ÉÈÊË]/g,"E").replace(/[ÚÙÛÜ]/g,"U");
-                ragQueries.push(`LOCALES ${normalized} horarios direcciones`);
-                ragQueries.push(`UBICACIONES ${normalized}`);
-                ragQueries.push(`BARRIOS ${normalized} sedes locales ubicaciones`);
-              } else {
-                ragQueries.push("LOCALES horarios direcciones sedes");
-                ragQueries.push("ubicaciones barrios sedes locales");
-              }
-            }
-
-            if (isFoodQuery) {
-              ragQueries.push("carta platos bebidas menú");
-              ragQueries.push("combo hamburguesa carne pollo pescado");
-
-              // Sinónimos gastronómicos para que el RAG encuentre los platos reales
-              const cl = clientText.toLowerCase();
-              if (/sopas?/.test(cl)) ragQueries.push("sancocho trifásico ajiaco santafereño cazuela paisa cazuela montañera calentado");
-              if (/sancocho/.test(cl)) ragQueries.push("sancocho trifásico ajiaco cazuela");
-              if (/ajiaco/.test(cl)) ragQueries.push("ajiaco santafereño sancocho cazuela");
-              if (/parrill|asado/.test(cl)) ragQueries.push("churrasco baby beef punta de anca bife de chorizo solomito costillas");
-              if (/t[ií]pic/.test(cl)) ragQueries.push("bandeja paisa calentado paisa arroz paisa sancocho");
-              if (/entrada/.test(cl)) ragQueries.push("chorizo deditos mozarella chicharrón empanaditas yuquitas patacones");
-              if (/vegetarian/.test(cl)) ragQueries.push("ensalada de la casa atún al carbón arepa de queso");
-              if (/infantil|niño/.test(cl)) ragQueries.push("menú infantil nuggets pollo");
-            }
-
-            let ragResult = { entries: [] as { title?: string }[], text: "" };
-            for (const q of ragQueries) {
-              const result = await rag.search(ctx, {
-                namespace: args.tenantId,
-                query: q,
-                limit: 15,
+          // OpenClaw-only: cargar conocimiento directo desde Convex (sin embeddings OpenAI).
+          // Cuando openaiKey exista, usar RAG semántico; si no, carga directa.
+          if (openclawOnly) {
+            try {
+              const knowledgeItems = await ctx.runQuery(api.knowledge.listByTenant, {
+                tenantId: args.tenantId,
               });
-              if (result.entries.length > ragResult.entries.length) {
-                ragResult = result;
-              }
-              if (ragResult.entries.length >= 5) break;
-            }
+              console.log("ycloud: knowledge items encontrados", {
+                tenantId: args.tenantId,
+                count: knowledgeItems?.length ?? 0,
+                titles: knowledgeItems?.map((i: { title?: string }) => i.title).slice(0, 10),
+              });
+              if (knowledgeItems && knowledgeItems.length > 0) {
+                const MAX_CHARS = 48_000;
+                let knowledgeText = "";
 
-            if (ragResult.entries.length > 0) {
-              preloadedRagContext =
-                `[BASE DE CONOCIMIENTO DEL RESTAURANTE — FUENTE DE VERDAD OBLIGATORIA]\n` +
-                `INSTRUCCIÓN: Los datos a continuación son los únicos válidos para responder sobre sedes, locales, horarios, direcciones, menú, platos y precios de ESTE restaurante. NO uses ningún dato que no aparezca en este bloque. Responde basándote SOLO en esta información.\n\n` +
-                ragResult.text +
-                `\n[Fin BASE DE CONOCIMIENTO]\n\n`;
+                // Priorizar docs de ubicaciones/sedes cuando el cliente pregunta por domicilios
+                const prioritized = [...knowledgeItems].sort((a, b) => {
+                  const score = (title?: string) => {
+                    const t = (title ?? "").toLowerCase();
+                    if (/(ubicaciones_completo|horarios_locales)/.test(t)) return 30;
+                    if (/(ubicaciones|locales|sedes|horarios|domicilios|barrios)/.test(t)) return 10;
+                    return 0;
+                  };
+                  if (isLocationQuery || lastMsgAsksLocation) return score(b.title) - score(a.title);
+                  return 0;
+                });
+
+                for (const item of prioritized) {
+                  let itemText = (item.content ?? "").trim();
+                  const storageId = item.storageId;
+                  const hasStorageId = Boolean(storageId);
+                  if (!itemText && storageId) {
+                    try {
+                      itemText = await ctx.runAction(
+                        internal.knowledgeFileParsing.fetchFileContent,
+                        { storageId }
+                      );
+                    } catch (fetchErr) {
+                      console.warn("ycloud: fetchFileContent falló para item", {
+                        title: item.title,
+                        error: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+                      });
+                      itemText = "";
+                    }
+                  }
+                  console.log("ycloud: item procesado", {
+                    title: item.title,
+                    hasContent: Boolean(item.content?.trim()),
+                    hasStorageId,
+                    resolvedLen: itemText.length,
+                  });
+                  if (!itemText) continue;
+                  const chunk = `### ${item.title}\n${itemText}\n\n`;
+                  if ((knowledgeText + chunk).length > MAX_CHARS) break;
+                  knowledgeText += chunk;
+                }
+
+                if (knowledgeText.trim()) {
+                  preloadedRagContext =
+                    `[BASE DE CONOCIMIENTO DEL RESTAURANTE — FUENTE DE VERDAD OBLIGATORIA]\n` +
+                    `INSTRUCCIÓN: Los datos a continuación son los únicos válidos para responder sobre sedes, locales, horarios, direcciones, menú, platos y precios de ESTE restaurante. Busca en TODO el texto antes de decir que no tienes información.\n\n` +
+                    knowledgeText +
+                    `[Fin BASE DE CONOCIMIENTO]\n\n`;
+                  console.log("ycloud: conocimiento cargado (modo OpenClaw-only)", {
+                    items: prioritized.length,
+                    chars: knowledgeText.length,
+                  });
+                } else {
+                  console.warn("ycloud: todos los items quedaron vacíos — sin contexto RAG");
+                }
+              } else {
+                console.warn("ycloud: sin items de conocimiento para este tenant", { tenantId: args.tenantId });
+              }
+            } catch (err) {
+              console.warn("ycloud: carga de conocimiento falló", err instanceof Error ? err.message : err);
             }
-          } catch (ragErr) {
-            console.warn("ycloud: pre-búsqueda RAG falló (no crítico)", ragErr instanceof Error ? ragErr.message : ragErr);
+          } else {
+            // Modo con OpenAI: usar RAG semántico con embeddings
+            try {
+              const ragQuerySet = new Set<string>([clientText]);
+
+              if (isLocationQuery || lastMsgAsksLocation) {
+                const cityInClient = clientText.match(CITY_REGEX);
+                const cityInLastMsg = lastAssistantText.match(CITY_REGEX);
+                const cityMatch = cityInClient ?? cityInLastMsg;
+                const barrioMatch = lastAssistantText.match(/barrio[:\s*]+([^\.\n,?]+)/i);
+                const barrioHint = barrioMatch?.[1]?.trim() ?? "";
+
+                if (cityMatch) {
+                  const normalized = normalizeCityKey(cityMatch[1]);
+                  ragQuerySet.add(`LOCALES ${normalized} horarios direcciones`);
+                  ragQuerySet.add(`UBICACIONES ${normalized}`);
+                  ragQuerySet.add(`${normalized} sedes locales direcciones domicilios`);
+                  ragQuerySet.add(`ubicaciones_completo ${normalized}`);
+                  if (barrioHint) ragQuerySet.add(`sede cercana ${normalized} barrio ${barrioHint} domicilio`);
+                } else {
+                  ragQuerySet.add("LOCALES horarios direcciones sedes");
+                  ragQuerySet.add("ubicaciones barrios sedes locales");
+                }
+                ragQuerySet.add("ubicaciones_completo sedes ciudades domicilios");
+              }
+
+              if (isFoodQuery) {
+                ragQuerySet.add("carta platos bebidas menú");
+                ragQuerySet.add("combo hamburguesa carne pollo pescado");
+                const cl = clientText.toLowerCase();
+                if (/sopas?/.test(cl)) ragQuerySet.add("sancocho trifásico ajiaco santafereño cazuela paisa");
+                if (/sancocho/.test(cl)) ragQuerySet.add("sancocho trifásico ajiaco cazuela");
+                if (/parrill|asado/.test(cl)) ragQuerySet.add("churrasco baby beef punta de anca bife de chorizo");
+                if (/t[ií]pic/.test(cl)) ragQuerySet.add("bandeja paisa calentado paisa arroz paisa sancocho");
+                if (/entrada/.test(cl)) ragQuerySet.add("chorizo deditos mozarella chicharrón empanaditas");
+                if (/vegetarian/.test(cl)) ragQuerySet.add("ensalada de la casa atún al carbón arepa de queso");
+                if (/infantil|niño/.test(cl)) ragQuerySet.add("menú infantil nuggets pollo");
+              }
+
+              const seenIds = new Set<string>();
+              const mergedEntries: { title?: string }[] = [];
+              let mergedText = "";
+
+              for (const q of ragQuerySet) {
+                const result = await rag.search(ctx, { namespace: args.tenantId, query: q, limit: 12 });
+                for (const entry of result.entries) {
+                  const id = (entry as { _id?: string })._id ?? entry.title ?? Math.random().toString();
+                  if (!seenIds.has(id)) { seenIds.add(id); mergedEntries.push(entry); }
+                }
+                if (result.entries.length > 0 && mergedText.split("\n").length < 600) {
+                  mergedText += (mergedText ? "\n\n---\n\n" : "") + result.text;
+                }
+                if (mergedEntries.length >= 20) break;
+              }
+
+              if (mergedEntries.length > 0) {
+                preloadedRagContext =
+                  `[BASE DE CONOCIMIENTO DEL RESTAURANTE — FUENTE DE VERDAD OBLIGATORIA]\n` +
+                  `INSTRUCCIÓN: Los datos a continuación son los únicos válidos para responder sobre sedes, locales, horarios, direcciones, menú, platos y precios de ESTE restaurante.\n\n` +
+                  mergedText +
+                  `\n[Fin BASE DE CONOCIMIENTO]\n\n`;
+              }
+            } catch (ragErr) {
+              console.warn("ycloud: pre-búsqueda RAG falló", ragErr instanceof Error ? ragErr.message : ragErr);
+            }
           }
         }
 

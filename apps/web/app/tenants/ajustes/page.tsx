@@ -7,6 +7,7 @@ import type { Id } from "@/convex";
 import { useTenant } from "@/lib/tenant-context";
 import { Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { proxiedTenantAssetUrl } from "@/lib/tenant-asset-url";
 
 const DEFAULT_PRIMARY = "#197fe6";
 const DEFAULT_SECONDARY = "#06b6d4";
@@ -56,8 +57,11 @@ export default function AjustesPage() {
   }, [tenant]);
 
   const primaryColor = tenant?.primaryColor ?? DEFAULT_PRIMARY;
-  const displayLogoUrl =
+  const rawDisplayLogoUrl =
     form.logoStorageId ? (uploadPreviewUrl ?? null) : form.logoUrl || (tenant?.logoUrl ?? "");
+  const displayLogoUrl = rawDisplayLogoUrl
+    ? proxiedTenantAssetUrl(rawDisplayLogoUrl) ?? rawDisplayLogoUrl
+    : "";
 
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
