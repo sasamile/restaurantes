@@ -50,6 +50,34 @@ export default defineSchema({
         })
       )
     ),
+    /**
+     * Cierre automático de conversaciones por silencio del cliente.
+     *
+     * undefined = apagado. Se activa restaurante por restaurante desde Ajustes:
+     * encenderlo para todos de golpe cambiaría el comportamiento del bot en
+     * producción sin que nadie lo haya pedido.
+     *
+     * Los minutos se cuentan desde el ÚLTIMO mensaje del cliente, no desde la
+     * respuesta del bot: lo que se mide es su silencio.
+     */
+    conversationInactivity: v.optional(
+      v.object({
+        enabled: v.boolean(),
+        /** Minutos de silencio tras los que el bot pregunta si sigue ahí. */
+        checkInMinutes: v.number(),
+        /** Minutos de silencio tras los que se despide y cierra el chat. */
+        closeMinutes: v.number(),
+        /** Texto del "¿sigues ahí?". Vacío/undefined = el de por defecto. */
+        checkInMessage: v.optional(v.string()),
+        /** Texto de despedida antes de cerrar. */
+        closingMessage: v.optional(v.string()),
+        /**
+         * No tocar conversaciones con una PQR sin resolver: esas las cierra una
+         * persona. Por defecto true.
+         */
+        skipWhenOpenPqr: v.optional(v.boolean()),
+      })
+    ),
     /** Módulos habilitados por restaurante. undefined = todos habilitados (compatibilidad) */
     enabledModules: v.optional(
       v.object({
@@ -178,6 +206,28 @@ export default defineSchema({
      * solapan y compartir el handle haría que uno cancelara el job del otro.
      */
     autoReleaseJobId: v.optional(v.id("_scheduled_functions")),
+    /**
+     * Último mensaje del CLIENTE. Distinto de `lastMessageAt`, que también se
+     * mueve con cada respuesta del bot: si midiéramos el silencio del cliente
+     * con `lastMessageAt`, cada mensaje que enviara el propio bot reiniciaría el
+     * reloj y el chat no se cerraría nunca.
+     */
+    lastCustomerMessageAt: v.optional(v.number()),
+    /**
+     * Job programado del ciclo de inactividad del cliente. Campo aparte de
+     * `pendingJobId` (debounce, segundos) y `autoReleaseJobId` (agente humano,
+     * minutos): los tres relojes conviven y compartir handle haría que uno
+     * cancelara el job de otro.
+     */
+    customerInactivityJobId: v.optional(v.id("_scheduled_functions")),
+    /**
+     * En qué punto del ciclo va la conversación.
+     * "armed" = esperando para preguntar «¿sigues ahí?».
+     * "pinged" = ya se preguntó; lo siguiente es despedirse y cerrar.
+     */
+    inactivityStage: v.optional(
+      v.union(v.literal("armed"), v.literal("pinged"))
+    ),
     lastMessageAt: v.number(),
     lastMessagePreview: v.optional(v.string()), // preview para lista tipo WhatsApp
     lastMessageDirection: v.optional(v.union(v.literal("INBOUND"), v.literal("OUTBOUND"))),
@@ -508,7 +558,13 @@ export default defineSchema({
     .index("by_tenant_created", ["tenantId", "createdAt"])
     .index("by_tenant_status", ["tenantId", "status"])
     /** Para listar de un vistazo las PQR cuya notificación falló. */
-    .index("by_tenant_email_status", ["tenantId", "emailStatus"]),
+    .index("by_tenant_email_status", ["tenantId", "emailStatus"])
+    /**
+     * Para saber si un chat tiene una PQR sin resolver antes de cerrarlo solo.
+     * Sin este índice habría que recorrer todas las PQR del restaurante en cada
+     * disparo del temporizador.
+     */
+    .index("by_conversation", ["conversationId"]),
 
   // Integración Google Calendar por restaurante (OAuth tokens)
   googleCalendarIntegrations: defineTable({

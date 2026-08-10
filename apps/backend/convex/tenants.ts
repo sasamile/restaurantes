@@ -1,7 +1,9 @@
 import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { ALCARBON_DOMAIN } from "./system/alcarbon";
 import { assertTenantOwner } from "./lib/tenantAccess";
+import { requireTenantOwner } from "./lib/session";
+import { MAX_MINUTES, MIN_MINUTES } from "./lib/customerInactivity";
 
 function normalizeHost(value?: string): string | null {
   if (!value) return null;
@@ -326,6 +328,59 @@ export const seedUrbrands = mutation({
  * })
  * ```
  */
+/**
+ * Cierre automático de conversaciones por silencio del cliente.
+ *
+ * Mutation aparte de `update` a propósito: `update` todavía se autentica con
+ * `actorUserId`, un id que el cliente manda y cualquiera puede falsificar.
+ * Esto exige token de sesión, que es a donde va el resto del panel.
+ *
+ * Los minutos se validan aquí además de en `resolveInactivityConfig`: el panel
+ * no debe poder guardar una configuración que luego haya que corregir en
+ * silencio en cada lectura.
+ */
+export const setConversationInactivity = mutation({
+  args: {
+    token: v.string(),
+    tenantId: v.id("tenants"),
+    enabled: v.boolean(),
+    checkInMinutes: v.number(),
+    closeMinutes: v.number(),
+    checkInMessage: v.optional(v.string()),
+    closingMessage: v.optional(v.string()),
+    skipWhenOpenPqr: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    await requireTenantOwner(ctx, args.token, args.tenantId);
+
+    const inRange = (n: number) =>
+      Number.isFinite(n) && n >= MIN_MINUTES && n <= MAX_MINUTES;
+
+    if (!inRange(args.checkInMinutes) || !inRange(args.closeMinutes)) {
+      throw new ConvexError(
+        `Los minutos deben estar entre ${MIN_MINUTES} y ${MAX_MINUTES}`
+      );
+    }
+    if (args.closeMinutes <= args.checkInMinutes) {
+      throw new ConvexError(
+        "El cierre debe ocurrir después de la pregunta «¿sigues ahí?»"
+      );
+    }
+
+    await ctx.db.patch(args.tenantId, {
+      conversationInactivity: {
+        enabled: args.enabled,
+        checkInMinutes: Math.round(args.checkInMinutes),
+        closeMinutes: Math.round(args.closeMinutes),
+        checkInMessage: args.checkInMessage?.trim() || undefined,
+        closingMessage: args.closingMessage?.trim() || undefined,
+        skipWhenOpenPqr: args.skipWhenOpenPqr !== false,
+      },
+    });
+    return args.tenantId;
+  },
+});
+
 export const setPqrEmailRouting = mutation({
   args: {
     tenantId: v.id("tenants"),

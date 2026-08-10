@@ -12,6 +12,7 @@ import {
   scheduleAgentAutoRelease,
 } from "../lib/agentHandoff";
 import { requireConversationAccess } from "../lib/session";
+import { runInactivityJob } from "../lib/customerInactivity";
 
 async function upsertCustomer(
   ctx: MutationCtx,
@@ -127,6 +128,22 @@ export const autoReleaseToBot = internalMutation({
   // (se reprograma) y sin anotación la inferencia sería circular.
   handler: async (ctx, args): Promise<void> => {
     await runAutoReleaseJob(ctx, args.conversationId);
+  },
+});
+
+/**
+ * Ciclo de silencio del cliente: pregunta si sigue ahí y, si tampoco responde,
+ * se despide y cierra el caso.
+ *
+ * Capa fina: la decisión (preguntar / cerrar / reprogramar lo que falte / no
+ * hacer nada) vive en `decideOnInactivityJob` y está cubierta por tests.
+ */
+export const customerInactivityJob = internalMutation({
+  args: { conversationId: v.id("conversations") },
+  // El tipo de retorno va explícito porque el handler se referencia a sí mismo
+  // (se reprograma) y sin anotación la inferencia sería circular.
+  handler: async (ctx, args): Promise<void> => {
+    await runInactivityJob(ctx, args.conversationId);
   },
 });
 

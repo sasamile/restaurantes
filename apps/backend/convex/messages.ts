@@ -8,6 +8,7 @@ import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { requireConversationAccess } from "./lib/session";
+import { scheduleCustomerInactivity } from "./lib/customerInactivity";
 
 /** @deprecated Prefer listRecentByConversation — evita cargar hilos enteros. */
 export const listByConversation = query({
@@ -130,7 +131,17 @@ async function insertMessage(
       updatedAt: now,
       lastMessagePreview: preview,
       lastMessageDirection: args.direction,
+      // El reloj de silencio del cliente se mueve SOLO con lo que él escribe.
+      // `lastMessageAt` no sirve para eso: también avanza con cada respuesta
+      // del bot, así que el chat nunca acumularía silencio.
+      ...(args.direction === "INBOUND" ? { lastCustomerMessageAt: now } : {}),
     });
+    // Este insert es el único punto por el que pasan todos los mensajes
+    // entrantes, así que es donde se rearma el temporizador de inactividad.
+    // Colgarlo del webhook dejaría fuera cualquier otro camino de entrada.
+    if (args.direction === "INBOUND") {
+      await scheduleCustomerInactivity(ctx, args.conversationId);
+    }
     return await ctx.db.insert("messages", {
       conversationId: args.conversationId,
       tenantId: args.tenantId,

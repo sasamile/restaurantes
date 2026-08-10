@@ -26,7 +26,11 @@ import { LogoUploader } from "@/components/settings/logo-uploader";
 import { ColorField } from "@/components/settings/color-field";
 import { BrandPreview } from "@/components/settings/brand-preview";
 import { SettingsPageSkeleton } from "@/components/settings/settings-page-skeleton";
-import { Check, Loader2, Mail, Store } from "lucide-react";
+import {
+  ConversationInactivitySection,
+  type ConversationInactivityValue,
+} from "@/components/settings/conversation-inactivity-section";
+import { Check, Clock, Loader2, Mail, Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { sileo } from "@/lib/toast";
 
@@ -37,10 +41,10 @@ const ACCEPTED_IMAGE_TYPES = [
   "image/svg+xml",
 ];
 
-type Tab = "general" | "correos";
+type Tab = "general" | "correos" | "conversaciones";
 
 export default function AjustesPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { tenantId } = useTenant();
   const { isOwner, ready } = useRequireOwner();
   const [tab, setTab] = React.useState<Tab>("general");
@@ -95,6 +99,11 @@ export default function AjustesPage() {
   const pqrRouting = (
     tenant as { pqrEmailRouting?: PqrRoutingRule[] } | undefined
   )?.pqrEmailRouting;
+  const inactivity = (
+    tenant as
+      | { conversationInactivity?: ConversationInactivityValue }
+      | undefined
+  )?.conversationInactivity;
 
   const rawDisplayLogoUrl = form.logoStorageId
     ? (uploadPreviewUrl ?? null)
@@ -213,6 +222,12 @@ export default function AjustesPage() {
         Icon: Mail,
         show: pqrEnabled,
       },
+      {
+        id: "conversaciones",
+        label: "Conversaciones",
+        Icon: Clock,
+        show: true,
+      },
     ];
 
   return (
@@ -265,6 +280,13 @@ export default function AjustesPage() {
               embedded
             />
           </SettingsSection>
+        ) : tab === "conversaciones" ? (
+          <ConversationInactivitySection
+            tenantId={tenantId}
+            token={token}
+            primaryColor={form.primaryColor || DEFAULT_PRIMARY}
+            value={inactivity}
+          />
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6">
             <SettingsSection
