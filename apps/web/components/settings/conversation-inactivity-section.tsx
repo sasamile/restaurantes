@@ -138,6 +138,23 @@ export function ConversationInactivitySection({
           </span>
         </label>
 
+        {/*
+          Aviso fijo, no un toast: se puede guardar una configuración entera de
+          minutos y textos con la casilla apagada, y entonces el bot no hace
+          absolutamente nada. Sin este cartel eso parece un fallo del sistema en
+          vez de una casilla sin marcar.
+        */}
+        {!form.enabled && (
+          <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+            <strong className="font-semibold">
+              El seguimiento está desactivado.
+            </strong>{" "}
+            Los tiempos y mensajes de abajo se guardan, pero el bot no
+            preguntará ni cerrará ninguna conversación hasta que marques la
+            casilla.
+          </p>
+        )}
+
         <div className="grid gap-5 sm:grid-cols-2">
           <SettingsField
             id="inactivity-checkin"
@@ -260,10 +277,17 @@ export function ConversationInactivitySection({
               <Check size={15} strokeWidth={2} />
               Guardado
             </>
-          ) : (
+          ) : form.enabled ? (
             "Guardar cambios"
+          ) : (
+            "Guardar (desactivado)"
           )}
         </button>
+        {!form.enabled && !saving && !saved && (
+          <span className="text-sm text-muted-foreground">
+            Marca la casilla de arriba para que el bot actúe.
+          </span>
+        )}
       </div>
     </form>
   );
